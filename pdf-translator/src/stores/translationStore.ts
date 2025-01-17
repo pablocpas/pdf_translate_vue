@@ -12,74 +12,63 @@ const translationProgressSchema = z.object({
 });
 
 const translationTaskSchema = z.object({
-  id: z.string().min(1, 'ID es requerido'),
+  id: z.string().min(1, 'ID is required'),
   status: z.enum(['pending', 'processing', 'completed', 'failed']),
-  originalFile: z.string().min(1, 'Archivo original es requerido'),
   translatedFile: z.string().optional(),
   error: z.string().optional(),
-  createdAt: z.string().datetime().optional(),
-  updatedAt: z.string().datetime().optional(),
   progress: translationProgressSchema.optional()
 });
 
 export const useTranslationStore = defineStore('translation', () => {
-  // Estado principal
-  const currentTask = ref<TranslationTask | null>(loadFromStorage('currentTask'));
-  const taskHistory = ref<TranslationTask[]>(loadFromStorage('taskHistory') || []);
 
-  // Funciones de persistencia
+  // Persistence functions
   function loadFromStorage(key: string) {
     const stored = localStorage.getItem(`translation_${key}`);
     return stored ? JSON.parse(stored) : null;
   }
 
-  function saveToStorage(key: string, value: any) {
+  // Main state
+  const currentTask = ref<TranslationTask | null>(loadFromStorage('currentTask'));
+  const taskHistory = ref<TranslationTask[]>(loadFromStorage('taskHistory') || []);
+
+
+
+  function saveToStorage(key: string, value: any): void {
     localStorage.setItem(`translation_${key}`, JSON.stringify(value));
   }
 
-  // Gestión de tareas
-  function setCurrentTask(task: TranslationTask) {
+  // Task management
+  function setCurrentTask(task: TranslationTask): void {
     try {
-      console.log('Setting current task:', task); // Debug log
-      
-      const parsedTask = translationTaskSchema.safeParse({
-        ...task,
-        updatedAt: new Date().toISOString(),
-        createdAt: task.createdAt || new Date().toISOString()
-      });
+      console.log('Setting current task:', task);
+
+      const parsedTask = translationTaskSchema.safeParse(task);
 
       if (!parsedTask.success) {
-        console.error('Errores de validación:', parsedTask.error);
-        throw new Error('Tarea de traducción inválida');
+        console.error('Validation errors:', parsedTask.error);
+        throw new Error('Invalid translation task');
       }
 
-      // Asegurarse de que el progreso se mantiene si está presente
-      if (task.progress) {
-        console.log('Task progress:', task.progress); // Debug log
-      }
-
-      currentTask.value = parsedTask.data;
+      currentTask.value = parsedTask.data as TranslationTask;
       saveToStorage('currentTask', parsedTask.data);
-      addToHistory(parsedTask.data);
+      addToHistory(parsedTask.data as TranslationTask);
     } catch (error) {
       console.error('Error setting current task:', error);
       throw error;
     }
   }
 
-  function clearCurrentTask() {
+  function clearCurrentTask(): void {
     currentTask.value = null;
     localStorage.removeItem('translation_currentTask');
   }
 
-  function addToHistory(task: TranslationTask) {
-    // Evitar duplicados
+  function addToHistory(task: TranslationTask): void {
     const existingIndex = taskHistory.value.findIndex(t => t.id === task.id);
     if (existingIndex !== -1) {
       taskHistory.value[existingIndex] = task;
     } else {
       taskHistory.value.unshift(task);
-      // Mantener un tamaño máximo del historial
       if (taskHistory.value.length > MAX_HISTORY_SIZE) {
         taskHistory.value.pop();
       }
@@ -87,7 +76,7 @@ export const useTranslationStore = defineStore('translation', () => {
     saveToStorage('taskHistory', taskHistory.value);
   }
 
-  function clearHistory() {
+  function clearHistory(): void {
     taskHistory.value = [];
     localStorage.removeItem('translation_taskHistory');
   }
@@ -111,16 +100,11 @@ export const useTranslationStore = defineStore('translation', () => {
   );
 
   return {
-    // Estado
     currentTask,
     taskHistory,
-    
-    // Acciones
     setCurrentTask,
     clearCurrentTask,
     clearHistory,
-    
-    // Computed
     isTaskInProgress,
     hasError,
     isCompleted,

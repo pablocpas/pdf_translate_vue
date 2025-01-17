@@ -8,19 +8,14 @@ export interface UploadResponse {
   taskId: string;
 }
 
-export interface TranslationProgress {
-  current: number;
-  total: number;
-  percent: number;
-}
-
 export interface TranslationTask {
   id: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
-  originalFile: string;
-  translatedFile?: string;
+  progress?: {
+    current: number;
+    total: number;
+    percent: number;
+  };
   error?: string;
-  createdAt?: string;
-  updatedAt?: string;
-  progress?: TranslationProgress;
+  translatedFile?: string;
 }

@@ -45,8 +45,6 @@ def translate_pdf(task_id: str, pdf_path: str, target_language: str = "es"):
             pdf_path=pdf_path,
             output_pdf_path=output_pdf_path,
             target_language=target_language,
-            page_start=1,
-            page_end=9999,  # A large number to process all pages
             progress_callback=update_progress
         )
         

@@ -10,6 +10,8 @@ import logging
 from pathlib import Path
 from celery import Celery
 from celery.result import AsyncResult
+from fastapi.encoders import jsonable_encoder
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -28,7 +30,7 @@ TRANSLATED_DIR = Path("translated")
 UPLOAD_DIR.mkdir(exist_ok=True)
 TRANSLATED_DIR.mkdir(exist_ok=True)
 
-# Modelos y enumeraciones
+# Models and Enums
 class TaskStatus(str, Enum):
     pending = "pending"
     processing = "processing"
@@ -43,10 +45,9 @@ class TranslationProgress(BaseModel):
 class TranslationTask(BaseModel):
     id: str
     status: TaskStatus
-    originalFile: str
-    translatedFile: Optional[str] = None
-    error: Optional[str] = None
     progress: Optional[TranslationProgress] = None
+    error: Optional[str] = None
+    translatedFile: Optional[str] = None
 
 class UploadResponse(BaseModel):
     taskId: str
@@ -66,43 +67,45 @@ app.add_middleware(
 @app.post("/pdfs/translate", response_model=UploadResponse)
 async def upload_pdf(file: UploadFile = File(...), target_language: str = Form("es")):
     if not file.filename.lower().endswith(".pdf") or file.content_type != "application/pdf":
-        raise HTTPException(status_code=400, detail="Solo se permiten archivos PDF")
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
 
-    # Generar ID único para la tarea
+    # Generate unique task ID
     task_id = str(uuid.uuid4())
     file_path = UPLOAD_DIR / f"{task_id}.pdf"
 
-    # Guardar archivo en el servidor
+    # Save the file on the server
     with open(file_path, "wb") as buffer:
         buffer.write(await file.read())
 
-    # Enviar tarea al worker de Celery
+    # Send task to Celery worker
     celery_task = celery_app.send_task(
         'translate_pdf',
         args=[task_id, str(file_path), target_language]
     )
 
-    logger.info(f"Tarea {task_id} enviada para traducción")
+    logger.info(f"Task {task_id} sent for translation")
     return UploadResponse(taskId=celery_task.id)
+
 
 @app.get("/pdfs/status/{task_id}", response_model=TranslationTask)
 async def get_translation_status(task_id: str):
     celery_task = AsyncResult(task_id, app=celery_app)
 
-    # Mapear el estado de Celery a los estados definidos en la API
     if celery_task.state == 'PENDING':
-        return TranslationTask(
+        response = TranslationTask(
             id=task_id,
             status=TaskStatus.pending,
-            originalFile=f"uploads/{task_id}.pdf"
+            progress=TranslationProgress(
+                current=0,
+                total=0,
+                percent=0
+            )
         )
     elif celery_task.state == 'PROGRESS':
         meta = celery_task.info or {}
-        logger.info(f"Progress meta: {meta}")  # Mejor logging
-        return TranslationTask(
+        response = TranslationTask(
             id=task_id,
             status=TaskStatus.processing,
-            originalFile=f"uploads/{task_id}.pdf",
             progress=TranslationProgress(
                 current=meta.get('current', 0),
                 total=meta.get('total', 0),
@@ -111,17 +114,15 @@ async def get_translation_status(task_id: str):
         )
     elif celery_task.state == 'SUCCESS':
         result = celery_task.result
-        return TranslationTask(
+        response = TranslationTask(
             id=task_id,
             status=TaskStatus.completed,
-            originalFile=f"uploads/{task_id}.pdf",
-            translatedFile=result.get("translated_file", "")
+            translatedFile=result.get("translated_file")
         )
     elif celery_task.state == 'FAILURE':
-        return TranslationTask(
+        response = TranslationTask(
             id=task_id,
             status=TaskStatus.failed,
-            originalFile=f"uploads/{task_id}.pdf",
             error=str(celery_task.result)
         )
     else:
@@ -132,12 +133,12 @@ async def download_translated_pdf(task_id: str):
     celery_task = AsyncResult(task_id, app=celery_app)
 
     if celery_task.state != 'SUCCESS':
-        raise HTTPException(status_code=400, detail="La traducción no está completa")
+        raise HTTPException(status_code=400, detail="Translation is not complete")
 
     result = celery_task.result
     translated_file = result.get("translated_file")
     if not translated_file or not Path(translated_file).exists():
-        raise HTTPException(status_code=404, detail="Archivo traducido no encontrado")
+        raise HTTPException(status_code=404, detail="Translated file not found")
 
     return FileResponse(translated_file, media_type="application/pdf")
 
