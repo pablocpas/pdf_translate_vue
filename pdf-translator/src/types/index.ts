@@ -11,11 +11,11 @@ export interface UploadResponse {
 export interface TranslationTask {
   id: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
-  progress?: {
+  progress: {
     current: number;
     total: number;
     percent: number;
-  };
-  error?: string;
-  translatedFile?: string;
+  } | null;
+  error: string | null;
+  translatedFile: string | null;
 }

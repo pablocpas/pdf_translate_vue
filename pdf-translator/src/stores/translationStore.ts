@@ -15,8 +15,8 @@ const translationTaskSchema = z.object({
   id: z.string().min(1, 'ID is required'),
   status: z.enum(['pending', 'processing', 'completed', 'failed']),
   translatedFile: z.string().optional(),
-  error: z.string().optional(),
-  progress: translationProgressSchema.optional()
+  error: z.string().optional().nullable(),
+  progress: translationProgressSchema.optional().nullable()
 });
 
 export const useTranslationStore = defineStore('translation', () => {

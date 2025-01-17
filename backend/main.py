@@ -114,11 +114,18 @@ async def get_translation_status(task_id: str):
         )
     elif celery_task.state == 'SUCCESS':
         result = celery_task.result
-        response = TranslationTask(
-            id=task_id,
-            status=TaskStatus.completed,
-            translatedFile=result.get("translated_file")
-        )
+        if result.get("status") == "failed":
+            response = TranslationTask(
+                id=task_id,
+                status=TaskStatus.failed,
+                error=result.get("error", "Unknown error")
+            )
+        else:
+            response = TranslationTask(
+                id=task_id,
+                status=TaskStatus.completed,
+                translatedFile=result.get("translated_file")
+            )
     elif celery_task.state == 'FAILURE':
         response = TranslationTask(
             id=task_id,
@@ -127,6 +134,8 @@ async def get_translation_status(task_id: str):
         )
     else:
         raise HTTPException(status_code=500, detail="Estado desconocido")
+        
+    return response
 
 @app.get("/pdfs/download/{task_id}")
 async def download_translated_pdf(task_id: str):

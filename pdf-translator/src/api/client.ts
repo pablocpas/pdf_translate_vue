@@ -46,6 +46,15 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error: AxiosError) => {
+    console.error('API Error:', {
+      status: error.response?.status,
+      data: error.response?.data,
+      config: {
+        url: error.config?.url,
+        method: error.config?.method,
+      }
+    });
+
     const config = error.config as CustomAxiosRequestConfig | undefined;
     
     // Reintentar en caso de errores de red o 5xx
@@ -55,6 +64,7 @@ apiClient.interceptors.response.use(
        (error.response?.status && error.response.status >= 500)) &&
       (config.retryCount || 0) < MAX_RETRIES
     ) {
+      console.log('Retrying request...');
       const retryCount = (config.retryCount || 0) + 1;
       const newConfig = {
         ...config,
@@ -66,6 +76,7 @@ apiClient.interceptors.response.use(
     }
 
     if (!error.response) {
+      console.error('Network error:', error.message);
       throw new NetworkError('Error de conexión');
     }
 
@@ -73,7 +84,9 @@ apiClient.interceptors.response.use(
 
     // Validar formato del error
     try {
+      console.log('Attempting to parse error response:', data);
       const parsedError = ApiErrorSchema.parse(data);
+      console.log('Parsed error:', parsedError);
 
       if (status === 401) {
         const authStore = useAuthStore();
@@ -87,6 +100,7 @@ apiClient.interceptors.response.use(
         parsedError
       );
     } catch (e) {
+      console.error('Error parsing response:', e);
       if (e instanceof AuthenticationError || e instanceof ApiRequestError) {
         throw e;
       }
