@@ -16,7 +16,6 @@ const translationProgressSchema = z.object({
 const translationTaskSchema = z.object({
   id: z.string().min(1),
   status: z.enum(['pending', 'processing', 'completed', 'failed']),
-  originalFile: z.string().min(1),
   translatedFile: z.string().optional(),
   error: z.string().optional(),
   progress: translationProgressSchema.optional()
