@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./pdf-translator
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_URL=http://backend:8000
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./translated:/app/translated
+      - ./backend/main.py:/app/main.py
+    environment:
+      - UPLOAD_FOLDER=/app/uploads
+      - TRANSLATED_FOLDER=/app/translated
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    volumes:
+      - ./uploads:/app/uploads
+      - ./translated:/app/translated
+      - ./worker/tasks.py:/app/tasks.py
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - OPENAI_API_KEY=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
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
