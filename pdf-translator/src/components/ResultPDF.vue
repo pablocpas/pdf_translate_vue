@@ -88,14 +88,14 @@ const isLoading = ref(false);
 const checkInterval = ref<number>();
 
 const originalPdfUrl = computed(() => 
-  currentTask.value?.originalFile ? 
-  `${import.meta.env.VITE_API_URL}/pdfs/${currentTask.value.originalFile}` : 
+  currentTask.value?.id ? 
+  `${import.meta.env.VITE_API_URL}/pdfs/download/original/${currentTask.value.id}` : 
   ''
 );
 
 const translatedPdfUrl = computed(() => 
-  currentTask.value?.translatedFile ? 
-  `${import.meta.env.VITE_API_URL}/pdfs/${currentTask.value.translatedFile}` : 
+  currentTask.value?.id ? 
+  `${import.meta.env.VITE_API_URL}/pdfs/download/translated/${currentTask.value.id}` : 
   ''
 );
 

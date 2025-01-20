@@ -41,6 +41,7 @@ services:
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - TRANSLATED_FOLDER=/app/translated
       - OPENAI_API_KEY=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
     depends_on:
       - redis

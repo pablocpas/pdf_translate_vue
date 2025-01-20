@@ -17,15 +17,24 @@ from ...infrastructure.config.settings import MARGIN, DEBUG_MODE
 
 logger = logging.getLogger(__name__)
 
-def process_pdf(pdf_path: str, output_pdf_path: str, target_language: str, page_start: int, page_end: int, progress_callback: Callable[[int, int], None] = None) -> Dict[str, Any]:
+def process_pdf(pdf_path: str, output_pdf_path: str, target_language: str, progress_callback: Callable[[int, int], None] = None) -> Dict[str, Any]:
     """
     Process and translate a PDF file.
 
     :param pdf_path: Path to the input PDF file
     :param output_pdf_path: Path where the translated PDF will be saved
     :param target_language: The target language for translation
-    :param page_start: Starting page number
-    :param page_end: Ending page number
+    :param progress_callback: Function to call for progress updates
+    :return: Dictionary containing the result of the operation with either:
+            - {"success": True, "output_path": str} on success
+            - {"error": str} on failure
+    """
+    """
+    Process and translate a PDF file.
+
+    :param pdf_path: Path to the input PDF file
+    :param output_pdf_path: Path where the translated PDF will be saved
+    :param target_language: The target language for translation
     :param progress_callback: Function to call for progress updates
     :return: Dictionary containing the result of the operation
     """
@@ -36,7 +45,6 @@ def process_pdf(pdf_path: str, output_pdf_path: str, target_language: str, page_
         return {"error": str(e)}
 
     total_pages = len(pages)
-    page_end = min(page_end, total_pages)
     pdf_canvas = canvas.Canvas(output_pdf_path, pagesize=A4)
     page_width, page_height = A4
 
@@ -44,7 +52,7 @@ def process_pdf(pdf_path: str, output_pdf_path: str, target_language: str, page_
     base_style = styles["Normal"]
 
     try:
-        for page_num in range(page_start - 1, page_end):
+        for page_num in range(total_pages):
             process_page(pages[page_num], pdf_canvas, page_width, page_height, base_style, target_language)
 
             if progress_callback:

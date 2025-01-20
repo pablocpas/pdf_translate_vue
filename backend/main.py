@@ -24,11 +24,14 @@ celery_app = Celery(
     backend=os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
 )
 
-# Crear directorios para almacenar archivos
-UPLOAD_DIR = Path("uploads")
-TRANSLATED_DIR = Path("translated")
+# Get directories from environment variables or use defaults
+UPLOAD_DIR = Path(os.getenv('UPLOAD_FOLDER', '/app/uploads'))
+TRANSLATED_DIR = Path(os.getenv('TRANSLATED_FOLDER', '/app/translated'))
 UPLOAD_DIR.mkdir(exist_ok=True)
 TRANSLATED_DIR.mkdir(exist_ok=True)
+
+logger.info(f"Upload directory: {UPLOAD_DIR}")
+logger.info(f"Translated directory: {TRANSLATED_DIR}")
 
 # Models and Enums
 class TaskStatus(str, Enum):
@@ -47,6 +50,7 @@ class TranslationTask(BaseModel):
     status: TaskStatus
     progress: Optional[TranslationProgress] = None
     error: Optional[str] = None
+    originalFile: str
     translatedFile: Optional[str] = None
 
 class UploadResponse(BaseModel):
@@ -95,6 +99,7 @@ async def get_translation_status(task_id: str):
         response = TranslationTask(
             id=task_id,
             status=TaskStatus.pending,
+            originalFile=f"{task_id}.pdf",
             progress=TranslationProgress(
                 current=0,
                 total=0,
@@ -106,6 +111,7 @@ async def get_translation_status(task_id: str):
         response = TranslationTask(
             id=task_id,
             status=TaskStatus.processing,
+            originalFile=f"{task_id}.pdf",
             progress=TranslationProgress(
                 current=meta.get('current', 0),
                 total=meta.get('total', 0),
@@ -118,18 +124,30 @@ async def get_translation_status(task_id: str):
             response = TranslationTask(
                 id=task_id,
                 status=TaskStatus.failed,
+                originalFile=f"{task_id}.pdf",
                 error=result.get("error", "Unknown error")
             )
         else:
-            response = TranslationTask(
-                id=task_id,
-                status=TaskStatus.completed,
-                translatedFile=result.get("translated_file")
-            )
+            translated_file = result.get("output_path")
+            if not translated_file:
+                response = TranslationTask(
+                    id=task_id,
+                    status=TaskStatus.failed,
+                    originalFile=f"{task_id}.pdf",
+                    error="No output path returned from worker"
+                )
+            else:
+                response = TranslationTask(
+                    id=task_id,
+                    status=TaskStatus.completed,
+                    originalFile=f"{task_id}.pdf",
+                    translatedFile=translated_file
+                )
     elif celery_task.state == 'FAILURE':
         response = TranslationTask(
             id=task_id,
             status=TaskStatus.failed,
+            originalFile=f"{task_id}.pdf",
             error=str(celery_task.result)
         )
     else:
@@ -137,7 +155,14 @@ async def get_translation_status(task_id: str):
         
     return response
 
-@app.get("/pdfs/download/{task_id}")
+@app.get("/pdfs/download/original/{task_id}")
+async def download_original_pdf(task_id: str):
+    file_path = UPLOAD_DIR / f"{task_id}.pdf"
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Original file not found")
+    return FileResponse(file_path, media_type="application/pdf")
+
+@app.get("/pdfs/download/translated/{task_id}")
 async def download_translated_pdf(task_id: str):
     celery_task = AsyncResult(task_id, app=celery_app)
 
@@ -145,7 +170,7 @@ async def download_translated_pdf(task_id: str):
         raise HTTPException(status_code=400, detail="Translation is not complete")
 
     result = celery_task.result
-    translated_file = result.get("translated_file")
+    translated_file = result.get("output_path")
     if not translated_file or not Path(translated_file).exists():
         raise HTTPException(status_code=404, detail="Translated file not found")
 

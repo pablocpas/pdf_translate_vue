@@ -21,12 +21,13 @@ def translate_pdf(task_id: str, pdf_path: str, target_language: str = "es"):
     try:
         logger.info(f"Starting translation of PDF {pdf_path} to {target_language}")
         
-        # Ensure the translated directory exists
-        translated_dir = Path("/app/translated")
+        # Get directories from environment variables or use defaults
+        translated_dir = Path(os.getenv('TRANSLATED_FOLDER', '/app/translated'))
         translated_dir.mkdir(exist_ok=True)
         
         # Define output path
-        output_pdf_path = str(translated_dir / f"{task_id}_translated.pdf")
+        output_filename = f"{task_id}_translated.pdf"
+        output_pdf_path = str(translated_dir / output_filename)
         
         def update_progress(current: int, total: int):
             progress = {
@@ -58,7 +59,7 @@ def translate_pdf(task_id: str, pdf_path: str, target_language: str = "es"):
         logger.info(f"PDF translation completed successfully")
         return {
             "status": "completed",
-            "translated_file": output_pdf_path
+            "output_path": output_pdf_path
         }
     except Exception as e:
         logger.error(f"Unexpected error in translation task: {str(e)}")

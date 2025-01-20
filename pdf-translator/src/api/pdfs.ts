@@ -16,9 +16,10 @@ const translationProgressSchema = z.object({
 const translationTaskSchema = z.object({
   id: z.string().min(1, 'ID is required'),
   status: z.enum(['pending', 'processing', 'completed', 'failed']),
-  translatedFile: z.string().optional().nullable(),
-  error: z.string().optional().nullable(),
-  progress: translationProgressSchema.optional().nullable()
+  originalFile: z.string(),
+  translatedFile: z.string().nullable(),
+  error: z.string().nullable(),
+  progress: translationProgressSchema.nullable()
 });
 
 export async function uploadPdf(formData: FormData): Promise<UploadResponse> {
@@ -49,7 +50,7 @@ export async function getTranslationStatus(taskId: string): Promise<TranslationT
     console.log('Server response:', response.data);
     try {
       const validatedData = translationTaskSchema.parse(response.data);
-      return response.data;
+      return validatedData;
     } catch (validationError) {
       if (validationError instanceof z.ZodError) {
         console.error('Validation error details:', validationError.errors);
@@ -69,7 +70,7 @@ export async function getTranslationStatus(taskId: string): Promise<TranslationT
 }
 
 export async function downloadTranslatedPdf(taskId: string): Promise<Blob> {
-  const response = await apiClient.get(`/pdfs/download/${taskId}`, {
+  const response = await apiClient.get(`/pdfs/download/translated/${taskId}`, {
     responseType: 'blob',
   });
   

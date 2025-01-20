@@ -17,5 +17,6 @@ export interface TranslationTask {
     percent: number;
   } | null;
   error: string | null;
+  originalFile: string;
   translatedFile: string | null;
 }
