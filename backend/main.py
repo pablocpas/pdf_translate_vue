@@ -81,14 +81,15 @@ async def upload_pdf(file: UploadFile = File(...), target_language: str = Form("
     with open(file_path, "wb") as buffer:
         buffer.write(await file.read())
 
-    # Send task to Celery worker
+    # Send task to Celery worker with our custom task_id
     celery_task = celery_app.send_task(
         'translate_pdf',
-        args=[task_id, str(file_path), target_language]
+        args=[task_id, str(file_path), target_language],
+        task_id=task_id  # Use our UUID as the Celery task ID
     )
 
     logger.info(f"Task {task_id} sent for translation")
-    return UploadResponse(taskId=celery_task.id)
+    return UploadResponse(taskId=task_id)
 
 
 @app.get("/pdfs/status/{task_id}", response_model=TranslationTask)
