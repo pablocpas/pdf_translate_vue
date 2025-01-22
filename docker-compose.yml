@@ -38,6 +38,8 @@ services:
       - ./uploads:/app/uploads
       - ./translated:/app/translated
       - ./worker/tasks.py:/app/tasks.py
+      - ./worker/src:/app/src
+
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0

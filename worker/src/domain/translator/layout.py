@@ -4,30 +4,46 @@ from shapely.ops import unary_union
 import logging
 from PIL import Image
 from ...infrastructure.config.settings import MODEL_CONFIG_PATH, MODEL_PATH, LABEL_MAP, EXTRA_CONFIG
+# Variable global para el modelo
 
-def get_layout(image: Image.Image):
-    """
-    Obtiene el layout de una imagen utilizando un modelo preentrenado.
+class LayoutModel:
+    _instance = None  # Variable estática para almacenar la instancia única del modelo
 
-    Args:
-        image (Image.Image): Imagen de la cual obtener el layout.
+    def __new__(cls, *args, **kwargs):
+        """Garantiza que solo se cree una instancia del modelo."""
+        if cls._instance is None:
+            cls._instance = super(LayoutModel, cls).__new__(cls, *args, **kwargs)
+            cls._instance._initialize_model()
+        return cls._instance
 
-    Returns:
-        lp.Layout: Layout detectado.
-    """
+    def _initialize_model(self):
+        """Inicializa el modelo Detectron2LayoutModel."""
+        try:
+            self.model = lp.Detectron2LayoutModel(
+                config_path=MODEL_CONFIG_PATH,
+                model_path=MODEL_PATH,
+                label_map=LABEL_MAP,
+                extra_config=EXTRA_CONFIG
+            )
+            logging.info("Modelo Detectron2LayoutModel cargado correctamente.")
+        except Exception as e:
+            logging.error(f"Error cargando el modelo Detectron2LayoutModel: {e}")
+            raise
+
+    def get_model(self):
+        """Devuelve la instancia del modelo."""
+        return self.model
+
+
+def get_layout(image):
     try:
-        model = lp.Detectron2LayoutModel(
-            config_path=MODEL_CONFIG_PATH,
-            model_path=MODEL_PATH,
-            label_map=LABEL_MAP,
-            extra_config=EXTRA_CONFIG
-        )
+        model = LayoutModel().get_model()
         layout = model.detect(image)
         return layout
     except Exception as e:
         logging.error(f"Error al obtener el layout de la imagen: {e}")
-        logging.error(f"Config path: {MODEL_CONFIG_PATH}")
         return lp.Layout([])
+
 
 def merge_overlapping_text_regions(layout: lp.Layout):
     """
