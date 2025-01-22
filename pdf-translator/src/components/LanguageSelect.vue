@@ -3,27 +3,26 @@
     <label class="form-label">
       Idioma destino <span class="required">*</span>
     </label>
-    <div class="language-grid">
-      <div
-        v-for="lang in languages"
-        :key="lang.code"
-        class="language-card"
-        :class="{ 
-          'language-selected': modelValue === lang.code,
-          'has-error': error && !modelValue 
-        }"
-        @click="$emit('update:modelValue', lang.code)"
+    <div class="select-wrapper" :class="{ 'has-error': error && !modelValue }">
+      <select 
+        :value="modelValue"
+        @change="$emit('update:modelValue', ($event.target as HTMLSelectElement).value)"
+        class="language-select"
       >
-        <div class="language-icon">{{ getFlagEmoji(lang.code) }}</div>
-        <div class="language-info">
-          <span class="language-name">{{ lang.nativeName }}</span>
-          <span class="language-code">{{ lang.name }}</span>
-        </div>
-        <div class="check-icon" v-if="modelValue === lang.code">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
-        </div>
+        <option value="" disabled selected>Selecciona un idioma</option>
+        <option 
+          v-for="lang in languages" 
+          :key="lang.code" 
+          :value="lang.code"
+          class="language-option"
+        >
+          {{ getFlagEmoji(lang.code) }} {{ lang.nativeName }} ({{ lang.name }})
+        </option>
+      </select>
+      <div class="select-arrow">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m6 9 6 6 6-6"/>
+        </svg>
       </div>
     </div>
     <span v-if="error" class="error-text">{{ error }}</span>
@@ -79,76 +78,58 @@ const getFlagEmoji = (countryCode: string) => {
   margin-left: 4px;
 }
 
-.language-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.75rem;
-}
-
-.language-card {
+.select-wrapper {
   position: relative;
-  background: white;
-  border: 2px solid #e9ecef;
-  border-radius: 12px;
-  padding: 1rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
+  width: 100%;
 }
 
-.language-card:hover {
-  border-color: #74c0fc;
-  background: #f8f9fa;
-  transform: translateY(-2px);
-}
-
-.language-selected {
-  border-color: #228be6;
-  background: rgba(34, 139, 230, 0.05);
-}
-
-.language-selected:hover {
-  border-color: #228be6;
-  background: rgba(34, 139, 230, 0.08);
-}
-
-.has-error {
-  border-color: #fa5252;
-  animation: shake 0.5s ease-in-out;
-}
-
-.language-icon {
-  font-size: 1.5rem;
-  flex-shrink: 0;
-}
-
-.language-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.language-name {
-  display: block;
-  font-weight: 600;
+.language-select {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  font-size: 0.9375rem;
+  line-height: 1.5;
   color: #1a1b1e;
-  font-size: 0.875rem;
-  margin-bottom: 0.25rem;
+  background: linear-gradient(to bottom, #ffffff, #f8f9fa);
+  border: 2px solid #e9ecef;
+  border-radius: 14px;
+  appearance: none;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-.language-code {
-  display: block;
-  color: #868e96;
-  font-size: 0.8125rem;
+.language-select:hover {
+  border-color: #74c0fc;
+  background: linear-gradient(to bottom, #ffffff, #f1f3f5);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
 }
 
-.check-icon {
+.language-select:focus {
+  outline: none;
+  border-color: #228be6;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(34, 139, 230, 0.15);
+  transform: translateY(-1px);
+}
+
+.select-arrow {
   position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
   color: #228be6;
-  animation: scaleIn 0.2s ease;
+  pointer-events: none;
+  transition: transform 0.2s ease;
+}
+
+.language-select:focus + .select-arrow {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+.has-error .language-select {
+  border-color: #fa5252;
+  animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
 }
 
 .error-text {
@@ -157,47 +138,50 @@ const getFlagEmoji = (countryCode: string) => {
   color: #fa5252;
   font-size: 0.8125rem;
   font-weight: 500;
-  animation: shake 0.5s ease-in-out;
+  animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
 }
 
-@keyframes scaleIn {
-  from {
-    transform: scale(0);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
+/* Estilos para las opciones del select */
+.language-select option {
+  padding: 12px;
+  font-size: 0.9375rem;
+  background-color: white;
+  color: #1a1b1e;
+}
+
+.language-select option:checked {
+  background: linear-gradient(to right, #228be6, #15aabf);
+  color: white;
+}
+
+/* Estilos para el placeholder */
+.language-select option[value=""] {
+  color: #868e96;
+  font-style: italic;
 }
 
 @keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-4px); }
-  75% { transform: translateX(4px); }
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-3px); }
+  40%, 60% { transform: translateX(3px); }
 }
 
-@media (max-width: 768px) {
-  .language-grid {
-    grid-template-columns: repeat(2, 1fr);
+/* Estilos específicos para Firefox */
+@-moz-document url-prefix() {
+  .language-select {
+    text-indent: 0.01px;
+    text-overflow: '';
+    padding-right: 2.5rem;
   }
 }
 
-@media (max-width: 480px) {
-  .language-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .language-card {
-    padding: 1rem;
-  }
-  
-  .language-name {
-    font-size: 0.875rem;
-  }
-  
-  .language-code {
-    font-size: 0.75rem;
+/* Estilos específicos para Safari */
+@media not all and (min-resolution:.001dpcm) {
+  @supports (-webkit-appearance:none) {
+    .language-select {
+      padding-right: 2.5rem;
+    }
   }
 }
 </style>
