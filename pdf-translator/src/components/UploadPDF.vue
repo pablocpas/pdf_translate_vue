@@ -21,10 +21,10 @@
         <button
           type="submit"
           class="submit-button"
-          :disabled="isSubmitting || translationProgress > 0"
+          :disabled="isSubmitting || translationProgress >= 0"
         >
           <span v-if="isSubmitting">Subiendo archivo...</span>
-          <span v-else-if="translationProgress > 0">Traduciendo...</span>
+          <span v-else-if="translationProgress >= 0">Traduciendo...</span>
           <span v-else>Traducir PDF</span>
         </button>
       </form>
@@ -32,10 +32,10 @@
   </div>
 
   <ProgressBar
-    :show="isSubmitting || translationProgress > 0"
+    :show="isSubmitting || translationProgress >= 0"
     title="Procesando documento"
     :upload-progress="isSubmitting ? uploadProgress : null"
-    :translation-progress="translationProgress > 0 ? translationProgress : null"
+    :translation-progress="translationProgress >= 0 ? translationProgress : null"
     :error="errors.general"
     :closeable="false"
     @close="() => {}"
@@ -90,7 +90,7 @@ const errors = reactive({
 });
 
 const uploadProgress = ref(0);
-const translationProgress = ref(0);
+const translationProgress = ref(-1);
 const isSubmitting = ref(false);
 const pollingInterval = ref<number | null>(null);
 
@@ -125,7 +125,10 @@ const mutation = useMutation({
     translationStore.setCurrentTask({
       id: response.taskId,
       status: 'pending',
-      originalFile: form.file!.name
+      originalFile: form.file!.name,
+      progress: null,
+      error: null,
+      translatedFile: null
     });
     return response;
   },
@@ -135,6 +138,13 @@ const mutation = useMutation({
       try {
         const taskStatus = await getTranslationStatus(data.taskId);
         console.log('Task status:', taskStatus); // Debug log
+
+        console.log("El estado es:", taskStatus.status);
+
+        if(taskStatus.status === 'pending') {
+          translationProgress.value = 0;
+          console.log('Updated upload progress:', translationProgress.value); // Debug log
+        }
         
         // Actualizar el progreso solo si estamos en estado processing
         if (taskStatus.status === 'processing' && taskStatus.progress) {
