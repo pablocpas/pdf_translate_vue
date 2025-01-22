@@ -1,5 +1,7 @@
 from openai import OpenAI
 import logging
+from pydantic import BaseModel
+from typing import List
 from ...infrastructure.config.settings import GPT_MODEL, OPENAI_API_KEY
 
 client = OpenAI()
@@ -14,41 +16,41 @@ LANGUAGE_MAP = {
     'pt': 'Portuguese'
 }
 
-def translate_text(text: str, target_language: str) -> str:
+class TranslationResponse(BaseModel):
+    translations: List[str]
+
+def translate_text(texts: List[str], target_language: str) -> List[str]:
     """
-    Translates the text using OpenAI's GPT model.
+    Translates texts using OpenAI's GPT model with structured output.
 
     Args:
-        text (str): Text to translate.
-        target_language (str): Target language for translation.
+        texts (list[str]): List of texts to translate.
+        target_language (str): Target language ISO code.
 
     Returns:
-        str: Translated text.
+        list[str]: Translated texts in the same order.
     """
-    if not text.strip():
-        return "No text to translate"
+    if not texts:
+        return []
 
-    # Convert ISO code to full language name
     language_name = LANGUAGE_MAP.get(target_language.lower(), target_language)
     
-    prompt = (
-        f"Act as an expert translator to {language_name}. "
-        f"Your only task is to provide a direct translation of the given text. "
-        f"Do not give explanations, additional comments, or summarize the content. "
-        f"Do not add any preface or clarification, simply respond with the exact and complete translation. "
-        f"If the text is already in {target_language}, simply return it as is.\n\n"
-        f"Text to translate:\n{text}"
+    response = client.beta.chat.completions.parse(
+        model=GPT_MODEL,
+        messages=[
+            {"role": "system", "content": f"Translate these texts to {language_name} exactly as they appear, without adding any numbers or prefixes. Maintain the original formatting and order."},
+            {"role": "user", "content": "Texts to translate:\n" + "\n---\n".join(texts)}
+        ],
+        response_format=TranslationResponse,
+        temperature=0
     )
-
+    
     try:
-        response = client.chat.completions.create(
-            model=GPT_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-        )
-        translated_text = response.choices[0].message.content.strip()
-        logging.info("Text translated successfully.")
-        return translated_text
+        parsed_response = response.choices[0].message.parsed
+        if len(parsed_response.translations) != len(texts):
+            raise ValueError("Translations count mismatch")
+            
+        return parsed_response.translations
     except Exception as e:
-        logging.error(f"Error in OpenAI API: {e}")
-        return text  # Return the original text in case of error
+        logging.error(f"Translation error: {e}")
+        return [text for text in texts]  # Fallback returning original texts

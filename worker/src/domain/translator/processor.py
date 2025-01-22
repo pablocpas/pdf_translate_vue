@@ -97,6 +97,9 @@ def process_text_regions(text_regions: List[Tuple[Any, Any]], page_image: Image.
     :param base_style: Base style for paragraphs
     :param target_language: The target language for translation
     """
+    texts_to_translate = []
+    regions_data = []
+    
     for rect, _ in text_regions:
         x1, y1, x2, y2 = rect.coordinates
 
@@ -116,23 +119,29 @@ def process_text_regions(text_regions: List[Tuple[Any, Any]], page_image: Image.
         clean_txt = clean_text(text)
 
         if clean_txt:
-            translated_text = translate_text(clean_txt, target_language)
+            texts_to_translate.append(clean_txt)
+            regions_data.append((frame_x, frame_y, frame_width, frame_height, rect))
 
-            min_font_size = 8  # Tamaño de fuente mínimo
-            font_scale_factor = 0.8  # Ajusta este factor según sea necesario
-            initial_font_size = max(min_font_size, frame_height * font_scale_factor)
-            paragraph_style = ParagraphStyle(
-                name="CustomStyle",
-                parent=base_style,
-                fontSize=initial_font_size,
-                leading=initial_font_size * 1.2  # Ajustar el interlineado
-            )
-            paragraph = Paragraph(translated_text, paragraph_style)
-            paragraph = adjust_paragraph_font_size(
-                paragraph, frame_width, frame_height, paragraph_style, min_font_size
-            )
-            paragraph.wrapOn(pdf_canvas, frame_width, frame_height)
-            paragraph.drawOn(pdf_canvas, frame_x, frame_y)
+    # Traducción por página usando structured output
+    translated_texts = translate_text(texts_to_translate, target_language)
+
+    # Procesar textos traducidos
+    for translated_text, (frame_x, frame_y, frame_width, frame_height, _) in zip(translated_texts, regions_data):
+        min_font_size = 8
+        font_scale_factor = 0.8
+        initial_font_size = max(min_font_size, frame_height * font_scale_factor)
+        paragraph_style = ParagraphStyle(
+            name="CustomStyle",
+            parent=base_style,
+            fontSize=initial_font_size,
+            leading=initial_font_size * 1.2
+        )
+        paragraph = Paragraph(translated_text, paragraph_style)
+        paragraph = adjust_paragraph_font_size(
+            paragraph, frame_width, frame_height, paragraph_style, min_font_size
+        )
+        paragraph.wrapOn(pdf_canvas, frame_width, frame_height)
+        paragraph.drawOn(pdf_canvas, frame_x, frame_y)
 
 def process_image_regions(image_regions: List[Tuple[Any, Any]], page_image: Image.Image, pdf_canvas: canvas.Canvas, page_width: float, page_height: float) -> None:
     """
