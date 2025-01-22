@@ -98,8 +98,8 @@ const authStore = useAuthStore();
 
 .main-content {
   flex: 1;
-  padding: 2rem;
-  max-width: 1200px;
+  padding: 1rem;
+  max-width: 1400px;
   margin: 0 auto;
   width: 100%;
   animation: fadeIn 0.3s ease-out;

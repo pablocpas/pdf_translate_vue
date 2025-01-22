@@ -135,12 +135,12 @@ const removeFile = () => {
 
 <style scoped>
 .form-group {
-  margin-bottom: 1.75rem;
+  margin-bottom: 1.25rem;
 }
 
 .form-label {
   display: block;
-  margin-bottom: 0.625rem;
+  margin-bottom: 0.5rem;
   font-weight: 600;
   color: #1a1b1e;
   font-size: 0.9375rem;
@@ -154,7 +154,7 @@ const removeFile = () => {
 
 .dropzone {
   width: 100%;
-  min-height: 200px;
+  min-height: 160px;
   border: 2px dashed #e9ecef;
   border-radius: 12px;
   background: #f8f9fa;
@@ -163,7 +163,7 @@ const removeFile = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
+  padding: 1.5rem;
   position: relative;
 }
 
@@ -198,13 +198,13 @@ const removeFile = () => {
 
 .upload-icon {
   color: #228be6;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 .upload-text {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.375rem;
 }
 
 .primary-text {
@@ -224,7 +224,7 @@ const removeFile = () => {
   align-items: center;
   gap: 1rem;
   width: 100%;
-  padding: 1rem;
+  padding: 0.75rem;
   background: white;
   border-radius: 8px;
 }

@@ -254,9 +254,9 @@ const handleSubmit = async () => {
 
 <style scoped>
 .upload-container {
-  max-width: 800px;
-  margin: 2rem auto;
-  padding: 0 1.5rem;
+  max-width: 1000px;
+  margin: 1rem auto;
+  padding: 0 1rem;
   animation: slideUp 0.5s ease-out;
 }
 
@@ -266,7 +266,7 @@ const handleSubmit = async () => {
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05), 
               0 10px 15px rgba(0, 0, 0, 0.1);
   border: 1px solid rgba(0, 0, 0, 0.1);
-  padding: 2.5rem;
+  padding: 1.5rem;
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
@@ -274,7 +274,7 @@ const handleSubmit = async () => {
 
 .card-header {
   text-align: center;
-  margin-bottom: 2.5rem;
+  margin-bottom: 1.5rem;
 }
 
 .title {
@@ -310,7 +310,7 @@ const handleSubmit = async () => {
 }
 
 .form-section {
-  margin-bottom: 1.75rem;
+  margin-bottom: 1.25rem;
 }
 
 .submit-button {
@@ -452,12 +452,12 @@ const handleSubmit = async () => {
 
 @media (max-width: 640px) {
   .upload-container {
-    margin: 1rem auto;
-    padding: 0 1rem;
+    margin: 0.5rem auto;
+    padding: 0 0.5rem;
   }
 
   .upload-card {
-    padding: 1.5rem;
+    padding: 1rem;
     border-radius: 12px;
   }
 
