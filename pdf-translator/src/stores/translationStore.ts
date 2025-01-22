@@ -31,6 +31,12 @@ export const useTranslationStore = defineStore('translation', () => {
   // Main state
   const currentTask = ref<TranslationTask | null>(loadFromStorage('currentTask'));
   const taskHistory = ref<TranslationTask[]>(loadFromStorage('taskHistory') || []);
+  const selectedModel = ref<string>(loadFromStorage('selectedModel') || 'claude3.5-haiku');
+
+  function setSelectedModel(model: string): void {
+    selectedModel.value = model;
+    saveToStorage('selectedModel', model);
+  }
 
 
 
@@ -100,15 +106,25 @@ export const useTranslationStore = defineStore('translation', () => {
     taskHistory.value.find(task => task.status === 'completed')
   );
 
+  const modelIcons = computed(() => ({
+    'gpt4o-mini': '🐇',
+    'claude3.5-haiku': '🎴',
+    'gemini-flash': '💎', 
+    'deepseek-v3': '🔍'
+  }));
+
   return {
     currentTask,
     taskHistory,
+    selectedModel,
+    modelIcons,
     setCurrentTask,
     clearCurrentTask,
     clearHistory,
     isTaskInProgress,
     hasError,
     isCompleted,
-    lastCompletedTask
+    lastCompletedTask,
+    setSelectedModel
   };
 });

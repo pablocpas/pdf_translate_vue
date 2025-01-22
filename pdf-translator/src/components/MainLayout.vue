@@ -3,14 +3,16 @@
     <header class="header">
       <div class="header-content">
         <h1 class="title">PDF Translator</h1>
-        <div class="nav-actions">
-          <button
-            v-if="authStore.token"
-            class="btn-logout"
-            @click="authStore.clearToken"
-          >
-            Cerrar sesión
-          </button>
+        <div class="controls-container">
+          <div class="nav-actions">
+            <button
+              v-if="authStore.token"
+              class="btn-logout"
+              @click="authStore.clearToken"
+            >
+              Cerrar sesión
+            </button>
+          </div>
         </div>
       </div>
     </header>
@@ -29,7 +31,6 @@
 
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/authStore';
-
 const authStore = useAuthStore();
 </script>
 
@@ -60,6 +61,12 @@ const authStore = useAuthStore();
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.controls-container {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
 }
 
 .title {

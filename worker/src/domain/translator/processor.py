@@ -123,6 +123,9 @@ def process_text_regions(text_regions: List[Tuple[Any, Any]], page_image: Image.
             regions_data.append((frame_x, frame_y, frame_width, frame_height, rect))
 
     # Traducción por página usando structured output
+    print("Traduciendo texto...")
+    print(texts_to_translate)
+    print(target_language)
     translated_texts = translate_text(texts_to_translate, target_language)
 
     # Procesar textos traducidos
