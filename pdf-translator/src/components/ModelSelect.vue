@@ -1,10 +1,15 @@
 <template>
   <div class="form-group">
-    <label class="form-label">
-      Modelo de IA <span class="required">*</span>
-      <span class="tooltip-icon" title="Modelos de IA proporcionados por OpenRouter">?</span>
-    </label>
-    <div class="model-grid">
+    <div class="header-row">
+      <label class="form-label">
+        Modelo de IA
+        <span class="tooltip-icon" title="Modelos de IA proporcionados por OpenRouter">?</span>
+      </label>
+      <button type="button" class="advanced-toggle" @click="showAdvanced = !showAdvanced">
+        {{ showAdvanced ? 'Ocultar opciones avanzadas' : 'Mostrar opciones avanzadas' }}
+      </button>
+    </div>
+    <div v-if="showAdvanced" class="model-grid">
       <div
         v-for="(icon, model) in modelIcons"
         :key="model"
@@ -16,11 +21,11 @@
         @click="handleModelSelect(model)"
       >
         <div class="model-icon-wrapper">
-          <img :src="icon" :alt="modelNames[model]" class="model-icon" />
+          <img :src="icon" :alt="modelNames[model as ModelType]" class="model-icon" />
         </div>
         <div class="model-info">
-          <span class="model-name">{{ modelNames[model] }}</span>
-          <span class="model-description">{{ modelDescriptions[model] }}</span>
+          <span class="model-name">{{ modelNames[model as ModelType] }}</span>
+          <span class="model-description">{{ modelDescriptions[model as ModelType] }}</span>
         </div>
         <div class="check-icon" v-if="modelValue === model">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -29,14 +34,27 @@
         </div>
       </div>
     </div>
+    <div v-else class="selected-model">
+      <div class="model-card model-selected">
+        <div class="model-icon-wrapper">
+          <img :src="modelIcons[modelValue]" :alt="modelNames[modelValue as ModelType]" class="model-icon" />
+        </div>
+        <div class="model-info">
+          <span class="model-name">{{ modelNames[modelValue as ModelType] }}</span>
+          <span class="model-description">{{ modelDescriptions[modelValue as ModelType] }}</span>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useTranslationStore } from '@/stores/translationStore';
 
-defineProps<{
+type ModelType = 'gpt4o-mini' | 'claude3.5-haiku' | 'gemini-flash' | 'deepseek-v3';
+
+const props = defineProps<{
   modelValue: string;
   error?: string;
 }>();
@@ -45,15 +63,17 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void;
 }>();
 
+const showAdvanced = ref(false);
 const store = useTranslationStore();
-const modelNames = {
+
+const modelNames: Record<ModelType, string> = {
   'gpt4o-mini': 'GPT-4o Mini',
   'claude3.5-haiku': 'Claude 3.5 Haiku',
   'gemini-flash': 'Gemini Flash',
   'deepseek-v3': 'DeepSeek v3'
 };
 
-const modelDescriptions = {
+const modelDescriptions: Record<ModelType, string> = {
   'gpt4o-mini': 'Rápido y eficiente para textos cortos',
   'claude3.5-haiku': 'Excelente para documentos técnicos',
   'gemini-flash': 'Ideal para traducciones precisas',
@@ -73,18 +93,35 @@ const handleModelSelect = (model: string) => {
   margin-bottom: 1.25rem;
 }
 
-.form-label {
-  display: block;
+.header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 0.5rem;
+}
+
+.form-label {
+  display: flex;
+  align-items: center;
   font-weight: 600;
   color: #1a1b1e;
   font-size: 0.9375rem;
   letter-spacing: -0.01em;
 }
 
-.required {
-  color: #fa5252;
-  margin-left: 4px;
+.advanced-toggle {
+  background: none;
+  border: none;
+  color: #228be6;
+  font-size: 0.875rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.advanced-toggle:hover {
+  background: rgba(34, 139, 230, 0.1);
 }
 
 .tooltip-icon {
@@ -111,6 +148,10 @@ const handleModelSelect = (model: string) => {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 0.75rem;
+}
+
+.selected-model {
+  animation: fadeIn 0.3s ease;
 }
 
 .model-card {
@@ -190,6 +231,15 @@ const handleModelSelect = (model: string) => {
   }
   to {
     transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
     opacity: 1;
   }
 }
