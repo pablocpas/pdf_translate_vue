@@ -2,6 +2,7 @@
   <div class="form-group">
     <label class="form-label">
       Modelo de IA <span class="required">*</span>
+      <span class="tooltip-icon" title="Modelos de IA proporcionados por OpenRouter">?</span>
     </label>
     <div class="model-grid">
       <div
@@ -14,7 +15,9 @@
         }"
         @click="handleModelSelect(model)"
       >
-        <div class="model-icon">{{ icon }}</div>
+        <div class="model-icon-wrapper">
+          <img :src="icon" :alt="modelNames[model]" class="model-icon" />
+        </div>
         <div class="model-info">
           <span class="model-name">{{ modelNames[model] }}</span>
           <span class="model-description">{{ modelDescriptions[model] }}</span>
@@ -84,6 +87,26 @@ const handleModelSelect = (model: string) => {
   margin-left: 4px;
 }
 
+.tooltip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #e9ecef;
+  color: #495057;
+  font-size: 11px;
+  margin-left: 6px;
+  cursor: help;
+  transition: all 0.2s ease;
+}
+
+.tooltip-icon:hover {
+  background: #dee2e6;
+  color: #228be6;
+}
+
 .model-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -119,10 +142,17 @@ const handleModelSelect = (model: string) => {
   background: rgba(34, 139, 230, 0.08);
 }
 
-.model-icon {
-  font-size: 1.5rem;
-  color: #228be6;
+.model-icon-wrapper {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.model-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
 }
 
 .model-info {

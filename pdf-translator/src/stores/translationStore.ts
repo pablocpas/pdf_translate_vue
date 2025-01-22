@@ -107,10 +107,10 @@ export const useTranslationStore = defineStore('translation', () => {
   );
 
   const modelIcons = computed(() => ({
-    'gpt4o-mini': '🐇',
-    'claude3.5-haiku': '🎴',
-    'gemini-flash': '💎', 
-    'deepseek-v3': '🔍'
+    'gpt4o-mini': 'https://openrouter.ai/images/icons/OpenAI.svg',
+    'claude3.5-haiku': 'https://openrouter.ai/images/icons/Anthropic.svg',
+    'gemini-flash': 'https://openrouter.ai/images/icons/GoogleGemini.svg',
+    'deepseek-v3': 'https://openrouter.ai/images/icons/DeepSeek.png'
   }));
 
   return {

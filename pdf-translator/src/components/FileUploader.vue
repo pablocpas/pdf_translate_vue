@@ -2,6 +2,7 @@
   <div class="form-group">
     <label class="form-label">
       Archivo PDF <span class="required">*</span>
+      <span class="tooltip-icon" title="Tamaño máximo permitido: 10MB">?</span>
     </label>
     <div
       class="dropzone"
@@ -150,6 +151,26 @@ const removeFile = () => {
 .required {
   color: #fa5252;
   margin-left: 4px;
+}
+
+.tooltip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #e9ecef;
+  color: #495057;
+  font-size: 11px;
+  margin-left: 6px;
+  cursor: help;
+  transition: all 0.2s ease;
+}
+
+.tooltip-icon:hover {
+  background: #dee2e6;
+  color: #228be6;
 }
 
 .dropzone {
