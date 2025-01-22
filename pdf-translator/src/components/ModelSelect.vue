@@ -67,12 +67,12 @@ const handleModelSelect = (model: string) => {
 
 <style scoped>
 .form-group {
-  margin-bottom: 1.75rem;
+  margin-bottom: 1.25rem;
 }
 
 .form-label {
   display: block;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
   font-weight: 600;
   color: #1a1b1e;
   font-size: 0.9375rem;
@@ -87,7 +87,7 @@ const handleModelSelect = (model: string) => {
 .model-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
 .model-card {
@@ -95,7 +95,7 @@ const handleModelSelect = (model: string) => {
   background: white;
   border: 2px solid #e9ecef;
   border-radius: 12px;
-  padding: 1.25rem;
+  padding: 1rem;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
@@ -134,15 +134,15 @@ const handleModelSelect = (model: string) => {
   display: block;
   font-weight: 600;
   color: #1a1b1e;
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   margin-bottom: 0.25rem;
 }
 
 .model-description {
   display: block;
   color: #868e96;
-  font-size: 0.8125rem;
-  line-height: 1.4;
+  font-size: 0.75rem;
+  line-height: 1.3;
 }
 
 .check-icon {
