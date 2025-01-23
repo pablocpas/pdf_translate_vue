@@ -54,6 +54,9 @@ coverage
 # Docker
 .docker/
 
+./uploads/
+./translated/
+
 # Logs
 logs/
 *.log
