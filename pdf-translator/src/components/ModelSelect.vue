@@ -11,23 +11,23 @@
     </div>
     <div v-if="showAdvanced" class="model-grid">
       <div
-        v-for="(icon, model) in modelIcons"
-        :key="model"
+        v-for="model in models"
+        :key="model.id"
         class="model-card"
         :class="{ 
-          'model-selected': modelValue === model,
+          'model-selected': modelValue === model.id,
           'has-error': error && !modelValue 
         }"
-        @click="handleModelSelect(model)"
+        @click="handleModelSelect(model.id)"
       >
         <div class="model-icon-wrapper">
-          <img :src="icon" :alt="modelNames[model as ModelType]" class="model-icon" />
+          <img :src="model.icon" :alt="model.name" class="model-icon" />
         </div>
         <div class="model-info">
-          <span class="model-name">{{ modelNames[model as ModelType] }}</span>
-          <span class="model-description">{{ modelDescriptions[model as ModelType] }}</span>
+          <span class="model-name">{{ model.name }}</span>
+          <span class="model-description">{{ model.description }}</span>
         </div>
-        <div class="check-icon" v-if="modelValue === model">
+        <div class="check-icon" v-if="modelValue === model.id">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="20 6 9 17 4 12"></polyline>
           </svg>
@@ -37,11 +37,11 @@
     <div v-else class="selected-model">
       <div class="model-card model-selected">
         <div class="model-icon-wrapper">
-          <img :src="modelIcons[modelValue]" :alt="modelNames[modelValue as ModelType]" class="model-icon" />
+          <img :src="models.find(m => m.id === modelValue)?.icon" :alt="models.find(m => m.id === modelValue)?.name" class="model-icon" />
         </div>
         <div class="model-info">
-          <span class="model-name">{{ modelNames[modelValue as ModelType] }}</span>
-          <span class="model-description">{{ modelDescriptions[modelValue as ModelType] }}</span>
+          <span class="model-name">{{ models.find(m => m.id === modelValue)?.name }}</span>
+          <span class="model-description">{{ models.find(m => m.id === modelValue)?.description }}</span>
         </div>
       </div>
     </div>
@@ -80,9 +80,25 @@ const modelDescriptions: Record<ModelType, string> = {
   'deepseek-v3': 'Perfecto para documentos largos'
 };
 
-const modelIcons = computed(() => store.modelIcons);
+interface Model {
+  id: ModelType;
+  name: string;
+  description: string;
+  icon: string;
+}
 
-const handleModelSelect = (model: string) => {
+const models = computed<Model[]>(() => {
+  return Object.entries(modelIcons.value).map(([id, icon]) => ({
+    id: id as ModelType,
+    name: modelNames[id as keyof typeof modelNames],
+    description: modelDescriptions[id as keyof typeof modelDescriptions],
+    icon
+  }));
+});
+
+const modelIcons = computed<Record<ModelType, string>>(() => store.modelIcons);
+
+const handleModelSelect = (model: ModelType) => {
   store.setSelectedModel(model);
   emit('update:modelValue', model);
 };
