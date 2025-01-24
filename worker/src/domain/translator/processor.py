@@ -17,47 +17,49 @@ from ...infrastructure.config.settings import MARGIN, DEBUG_MODE
 
 logger = logging.getLogger(__name__)
 
-def process_pdf(pdf_path: str, output_pdf_path: str, target_language: str, progress_callback: Callable[[int, int], None] = None) -> Dict[str, Any]:
-    """
-    Process and translate a PDF file.
-
-    :param pdf_path: Path to the input PDF file
-    :param output_pdf_path: Path where the translated PDF will be saved
-    :param target_language: The target language for translation
-    :param progress_callback: Function to call for progress updates
-    :return: Dictionary containing the result of the operation with either:
-            - {"success": True, "output_path": str} on success
-            - {"error": str} on failure
-    """
-    """
-    Process and translate a PDF file.
-
-    :param pdf_path: Path to the input PDF file
-    :param output_pdf_path: Path where the translated PDF will be saved
-    :param target_language: The target language for translation
-    :param progress_callback: Function to call for progress updates
-    :return: Dictionary containing the result of the operation
-    """
+def process_pdf(pdf_path, output_pdf_path, target_language, progress_callback=None):
     try:
+        # Escoge un DPI adecuado (por ejemplo, 300)
         pages = convert_from_path(pdf_path, dpi=300)
     except Exception as e:
         logger.error(f"Error converting PDF to images: {e}")
         return {"error": str(e)}
 
     total_pages = len(pages)
-    pdf_canvas = canvas.Canvas(output_pdf_path, pagesize=A4)
-    page_width, page_height = A4
-
+    
+    # NOTA: Creamos el canvas SIN tamaño fijo:
+    pdf_canvas = canvas.Canvas(output_pdf_path)
     styles = getSampleStyleSheet()
     base_style = styles["Normal"]
 
     try:
-        for page_num in range(total_pages):
-            process_page(pages[page_num], pdf_canvas, page_width, page_height, base_style, target_language)
+        for page_num, page_image in enumerate(pages):
+            # Calculamos tamaño en puntos a partir de los píxeles y el DPI
+            width_px, height_px = page_image.size
+            dpi = 300  # El mismo que usaste en convert_from_path
+            page_width_pts = (width_px * 72.0) / dpi
+            page_height_pts = (height_px * 72.0) / dpi
+
+            # Establecemos el tamaño de página actual
+            pdf_canvas.setPageSize((page_width_pts, page_height_pts))
+
+            # Llamamos a la función que dibuja texto e imágenes
+            process_page(
+                page_image,
+                pdf_canvas,
+                page_width_pts,
+                page_height_pts,
+                base_style,
+                target_language
+            )
 
             if progress_callback:
                 progress_callback(page_num + 1, total_pages)
 
+            # Finalizamos la página
+            pdf_canvas.showPage()
+
+        # Cerramos el documento final
         pdf_canvas.save()
         logger.info(f"Translated PDF saved as {output_pdf_path}")
         return {"success": True, "output_path": output_pdf_path}
@@ -82,8 +84,7 @@ def process_page(page_image: Image.Image, pdf_canvas: canvas.Canvas, page_width:
 
     process_text_regions(text_regions, page_image, pdf_canvas, page_width, page_height, base_style, target_language)
     process_image_regions(image_regions, page_image, pdf_canvas, page_width, page_height)
-
-    pdf_canvas.showPage()
+    
 
 def process_text_regions(text_regions: List[Tuple[Any, Any]], page_image: Image.Image, pdf_canvas: canvas.Canvas, page_width: float, page_height: float, base_style: ParagraphStyle, target_language: str) -> None:
     """
