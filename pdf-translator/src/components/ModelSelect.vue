@@ -86,7 +86,7 @@ const modelNames: Record<ModelType, string> = {
 } as const;
 
 const modelDescriptions: Record<ModelType, string> = {
-  'primalayout': 'Optimizado para documentos generales (recomendado)',
+  'primalayout': 'Optimizado para documentos generales',
   'publaynet': 'Especializado en papers y documentos académicos'
 } as const;
 
