@@ -5,15 +5,6 @@
         <h2 class="title">Traductor de PDF</h2>
         <p class="subtitle">Traduce documentos PDF a múltiples idiomas</p>
       </div>
-      
-      <div v-if="errors.general" class="error-banner">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="8" x2="12" y2="12"></line>
-          <line x1="12" y1="16" x2="12.01" y2="16"></line>
-        </svg>
-        {{ errors.general }}
-      </div>
 
       <form @submit.prevent="handleSubmit">
         <FileUploader
@@ -63,29 +54,76 @@
 
       <div class="processing-overlay" v-if="isProcessing">
         <div class="processing-content">
-          <div class="progress-circle">
-            <svg class="progress" viewBox="0 0 100 100">
-              <defs>
-                <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stop-color="#228be6" />
-                  <stop offset="100%" stop-color="#15aabf" />
-                </linearGradient>
-              </defs>
-              <circle class="progress-background" cx="50" cy="50" r="45"></circle>
-              <circle 
-                class="progress-bar" 
-                cx="50" 
-                cy="50" 
-                r="45"
-                :style="{
-                  strokeDashoffset: `${((100 - translationProgress) / 100) * 283}px`
-                }"
-              ></circle>
-            </svg>
-            <span class="progress-text">{{ Math.round(translationProgress) }}%</span>
-          </div>
-          <h3 class="processing-title">Traduciendo documento</h3>
-          <p class="processing-description">Por favor, espera mientras procesamos tu archivo</p>
+          <template v-if="errors.general">
+            <div class="error-banner" :class="errorSeverity">
+              <!-- Network Error Icon -->
+              <svg v-if="isNetworkError" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+                <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
+                <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
+                <path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path>
+                <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path>
+                <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                <line x1="12" y1="20" x2="12.01" y2="20"></line>
+              </svg>
+              <!-- File Error Icon -->
+              <svg v-else-if="isFileError" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                <polyline points="13 2 13 9 20 9"></polyline>
+                <line x1="9" y1="14" x2="15" y2="14"></line>
+              </svg>
+              <!-- Translation Error Icon -->
+              <svg v-else-if="isTranslationError" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 8h14"></path>
+                <path d="M5 12h14"></path>
+                <path d="M5 16h14"></path>
+                <path d="M3 20h18"></path>
+                <circle cx="12" cy="4" r="2"></circle>
+              </svg>
+              <!-- Default Error Icon -->
+              <svg v-else xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              
+              <div class="error-content">
+                <span class="error-title">{{ errorTitle }}</span>
+                <span class="error-message">{{ errors.general }}</span>
+                <button v-if="showRetryButton" @click="handleRetry" class="retry-button">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/>
+                  </svg>
+                  Intentar de nuevo
+                </button>
+              </div>
+            </div>
+          </template>
+          <template v-else>
+            <div class="progress-circle">
+              <svg class="progress" viewBox="0 0 100 100">
+                <defs>
+                  <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#228be6" />
+                    <stop offset="100%" stop-color="#15aabf" />
+                  </linearGradient>
+                </defs>
+                <circle class="progress-background" cx="50" cy="50" r="45"></circle>
+                <circle 
+                  class="progress-bar" 
+                  cx="50" 
+                  cy="50" 
+                  r="45"
+                  :style="{
+                    strokeDashoffset: `${((100 - translationProgress) / 100) * 283}px`
+                  }"
+                ></circle>
+              </svg>
+              <span class="progress-text">{{ Math.round(translationProgress) }}%</span>
+            </div>
+            <h3 class="processing-title">Traduciendo documento</h3>
+            <p class="processing-description">Por favor, espera mientras procesamos tu archivo</p>
+          </template>
         </div>
       </div>
     </div>
@@ -101,7 +139,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTranslationStore } from '@/stores/translationStore';
 import { uploadPdf, getTranslationStatus } from '@/api/pdfs';
 import { ModelType } from '@/types';
-import { ApiRequestError, NetworkError } from '@/types/api';
+import { ApiRequestError, NetworkError, ErrorCode } from '@/types/api';
 import FileUploader from './FileUploader.vue';
 import ModelSelect from './ModelSelect.vue';
 import LanguageSelect from './LanguageSelect.vue';
@@ -139,12 +177,64 @@ const form = reactive({
   targetLanguage: 'es',
 });
 
-const errors = reactive({
+interface Errors {
+  model: string;
+  file: string;
+  targetLanguage: string;
+  general: string;
+  code?: ErrorCode;
+}
+
+const errors = reactive<Errors>({
   model: '',
   file: '',
   targetLanguage: '',
   general: '',
+  code: undefined
 });
+
+// Error handling computed properties
+const errorSeverity = computed(() => {
+  if (isNetworkError.value) return 'error-network';
+  if (isFileError.value) return 'error-file';
+  if (isTranslationError.value) return 'error-translation';
+  return 'error-general';
+});
+
+const isNetworkError = computed(() => {
+  return errors.code === ErrorCode.NETWORK_ERROR || 
+         errors.code === ErrorCode.TIMEOUT || 
+         errors.code === ErrorCode.SERVER_ERROR;
+});
+
+const isFileError = computed(() => {
+  return errors.code === ErrorCode.FILE_TOO_LARGE || 
+         errors.code === ErrorCode.INVALID_FILE_TYPE || 
+         errors.code === ErrorCode.FILE_CORRUPTED;
+});
+
+const isTranslationError = computed(() => {
+  return errors.code === ErrorCode.TRANSLATION_FAILED || 
+         errors.code === ErrorCode.LANGUAGE_NOT_SUPPORTED || 
+         errors.code === ErrorCode.OCR_FAILED;
+});
+
+const errorTitle = computed(() => {
+  if (isNetworkError.value) return 'Error de conexión';
+  if (isFileError.value) return 'Error en el archivo';
+  if (isTranslationError.value) return 'Error de traducción';
+  return 'Error';
+});
+
+const showRetryButton = computed(() => {
+  return isNetworkError.value || isTranslationError.value;
+});
+
+const handleRetry = () => {
+  errors.general = '';
+  errors.code = undefined as ErrorCode | undefined;
+  handleSubmit();
+};
 
 const uploadProgress = ref(0);
 const translationProgress = ref(-1);
@@ -164,15 +254,22 @@ onUnmounted(() => {
 
 const validate = () => {
   // Limpiar errores previos
-  Object.keys(errors).forEach(key => {
-    errors[key as keyof typeof errors] = '';
-  });
+  errors.model = '';
+  errors.file = '';
+  errors.targetLanguage = '';
+  errors.general = '';
+  errors.code = undefined;
   
   const result = schema.safeParse(form);
   if (!result.success) {
     result.error.errors.forEach((error) => {
       const path = error.path[0] as keyof typeof errors;
-      errors[path] = error.message;
+      if (path === 'model' || path === 'file' || path === 'targetLanguage' || path === 'general') {
+        errors[path] = error.message;
+      }
+      if (path === 'file') {
+        errors.code = ErrorCode.INVALID_FILE_TYPE;
+      }
     });
     return false;
   }
@@ -215,19 +312,34 @@ const mutation = useMutation({
         } else if (taskStatus.status === 'failed') {
           clearInterval(pollingInterval.value!);
           errors.general = taskStatus.error || 'Error en la traducción';
+          errors.code = ErrorCode.TRANSLATION_FAILED;
         }
       } catch (error) {
         console.error('Error al consultar estado:', error);
+        if (error instanceof ApiRequestError) {
+          errors.general = error.getUserMessage();
+          errors.code = error.error?.code || error.errorCode;
+        } else if (error instanceof NetworkError) {
+          errors.general = error.message;
+          errors.code = ErrorCode.NETWORK_ERROR;
+        } else {
+          errors.general = 'Error al consultar el estado de la traducción';
+          errors.code = ErrorCode.UNKNOWN_ERROR;
+        }
+        clearInterval(pollingInterval.value!);
       }
     }, 1000);
   },
   onError: (error: Error) => {
     if (error instanceof ApiRequestError) {
-      errors.general = `Error: ${error.message}`;
+      errors.general = error.getUserMessage();
+      errors.code = error.error?.code || error.errorCode;
     } else if (error instanceof NetworkError) {
-      errors.general = 'Error de conexión. Por favor, intenta de nuevo.';
+      errors.general = error.message;
+      errors.code = ErrorCode.NETWORK_ERROR;
     } else {
       errors.general = 'Error inesperado. Por favor, intenta de nuevo.';
+      errors.code = ErrorCode.UNKNOWN_ERROR;
     }
     console.error('Error al subir archivo:', error);
   },
@@ -303,14 +415,86 @@ const handleSubmit = async () => {
   background-color: #fff5f5;
   border: 2px solid #ffc9c9;
   border-radius: 12px;
-  color: #e03131;
   padding: 1rem 1.25rem;
   margin-bottom: 2rem;
   font-size: 0.95rem;
   animation: shake 0.5s ease-in-out;
   display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.error-banner.error-network {
+  background-color: #fff4e6;
+  border-color: #ffd8a8;
+  color: #e8590c;
+}
+
+.error-banner.error-file {
+  background-color: #f8f0fc;
+  border-color: #eebefa;
+  color: #ae3ec9;
+}
+
+.error-banner.error-translation {
+  background-color: #e7f5ff;
+  border-color: #a5d8ff;
+  color: #1971c2;
+}
+
+.error-banner.error-general {
+  background-color: #fff5f5;
+  border-color: #ffc9c9;
+  color: #e03131;
+}
+
+.error-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.error-title {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.error-message {
+  color: inherit;
+  opacity: 0.9;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.retry-button {
+  display: inline-flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 8px;
+  background-color: rgba(0, 0, 0, 0.1);
+  color: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.retry-button:hover {
+  background-color: rgba(0, 0, 0, 0.15);
+}
+
+.retry-button:active {
+  transform: translateY(1px);
+}
+
+.retry-button svg {
+  opacity: 0.8;
 }
 
 .form-section {
@@ -375,6 +559,8 @@ const handleSubmit = async () => {
 .processing-content {
   text-align: center;
   padding: 2rem;
+  width: 100%;
+  max-width: 500px;
 }
 
 .progress-circle {
