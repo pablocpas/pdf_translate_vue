@@ -17,7 +17,7 @@ celery_app = Celery(
 )
 
 @celery_app.task(name='translate_pdf')
-def translate_pdf(task_id: str, pdf_path: str, target_language: str = "es"):
+def translate_pdf(task_id: str = None, pdf_path: str = None, target_language: str = "es", model_type: str = "primalayout"):
     try:
         logger.info(f"Starting translation of PDF {pdf_path} to {target_language}")
         
@@ -46,7 +46,8 @@ def translate_pdf(task_id: str, pdf_path: str, target_language: str = "es"):
             pdf_path=pdf_path,
             output_pdf_path=output_pdf_path,
             target_language=target_language,
-            progress_callback=update_progress
+            progress_callback=update_progress,
+            model_type=model_type
         )
         
         if "error" in result:

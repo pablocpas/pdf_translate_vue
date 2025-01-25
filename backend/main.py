@@ -69,7 +69,11 @@ app.add_middleware(
 )
 
 @app.post("/pdfs/translate", response_model=UploadResponse)
-async def upload_pdf(file: UploadFile = File(...), target_language: str = Form("es")):
+async def upload_pdf(
+    file: UploadFile = File(...), 
+    target_language: str = Form("es"),
+    model: str = Form("primalayout")
+):
     if not file.filename.lower().endswith(".pdf") or file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
 
@@ -84,7 +88,12 @@ async def upload_pdf(file: UploadFile = File(...), target_language: str = Form("
     # Send task to Celery worker with our custom task_id
     celery_task = celery_app.send_task(
         'translate_pdf',
-        args=[task_id, str(file_path), target_language],
+        kwargs={
+            'task_id': task_id,
+            'pdf_path': str(file_path),
+            'target_language': target_language,
+            'model_type': model
+        },
         task_id=task_id  # Use our UUID as the Celery task ID
     )
 

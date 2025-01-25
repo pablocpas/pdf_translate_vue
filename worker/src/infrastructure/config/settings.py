@@ -16,15 +16,52 @@ MARGIN = 20
 DEBUG_MODE = False
 
 # Layout parser model configuration
-MODEL_CONFIG_PATH = './models/config.yaml'
-MODEL_PATH = './models/model_final.pth'
-LABEL_MAP = {
-    1: "TextRegion",
-    2: "ImageRegion",
-    3: "TableRegion",
-    4: "MathsRegion",
-    5: "SeparatorRegion",
-    6: "OtherRegion"
+MODEL_CONFIGS = {
+    'primalayout': {
+        'config_path': './models/primalayout/config.yaml',
+        'model_path': './models/primalayout/model_final.pth'
+    },
+    'publaynet': {
+        'config_path': './models/publaynet/config.yaml',
+        'model_path': './models/publaynet/model_final.pth'
+    }
+}
+# Original label maps for each model
+ORIGINAL_LABEL_MAPS = {
+    'primalayout': {
+        1: "TextRegion",
+        2: "ImageRegion",
+        3: "TableRegion",
+        4: "MathsRegion",
+        5: "SeparatorRegion",
+        6: "OtherRegion"
+    },
+    'publaynet': {
+        0: "Text",
+        1: "Title",
+        2: "List",
+        3: "Table",
+        4: "Figure"
+    }
+}
+
+# Normalized label maps that map to common types
+LABEL_MAPS = {
+    'primalayout': {
+        1: "TextRegion",  # TextRegion -> TextRegion
+        2: "ImageRegion", # ImageRegion -> ImageRegion
+        3: "ImageRegion", # TableRegion -> ImageRegion
+        4: "ImageRegion", # MathsRegion -> ImageRegion
+        5: "ImageRegion", # SeparatorRegion -> ImageRegion
+        6: "ImageRegion"  # OtherRegion -> ImageRegion
+    },
+    'publaynet': {
+        0: "TextRegion", # Text -> TextRegion
+        1: "TextRegion", # Title -> TextRegion
+        2: "TextRegion", # List -> TextRegion
+        3: "ImageRegion", # Table -> ImageRegion
+        4: "ImageRegion"  # Figure -> ImageRegion
+    }
 }
 EXTRA_CONFIG = ["MODEL.ROI_HEADS.SCORE_THRESH_TEST", 0.7]
 

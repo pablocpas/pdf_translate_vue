@@ -17,7 +17,7 @@ from ...infrastructure.config.settings import MARGIN, DEBUG_MODE
 
 logger = logging.getLogger(__name__)
 
-def process_pdf(pdf_path, output_pdf_path, target_language, progress_callback=None):
+def process_pdf(pdf_path, output_pdf_path, target_language, progress_callback=None, model_type="primalayout"):
     try:
         # Escoge un DPI adecuado (por ejemplo, 300)
         pages = convert_from_path(pdf_path, dpi=300)
@@ -50,7 +50,8 @@ def process_pdf(pdf_path, output_pdf_path, target_language, progress_callback=No
                 page_width_pts,
                 page_height_pts,
                 base_style,
-                target_language
+                target_language,
+                model_type
             )
 
             if progress_callback:
@@ -67,7 +68,7 @@ def process_pdf(pdf_path, output_pdf_path, target_language, progress_callback=No
         logger.error(f"Error processing PDF: {e}")
         return {"error": str(e)}
 
-def process_page(page_image: Image.Image, pdf_canvas: canvas.Canvas, page_width: float, page_height: float, base_style: ParagraphStyle, target_language: str) -> None:
+def process_page(page_image: Image.Image, pdf_canvas: canvas.Canvas, page_width: float, page_height: float, base_style: ParagraphStyle, target_language: str, model_type: str) -> None:
     """
     Process a single page of the PDF.
 
@@ -79,7 +80,7 @@ def process_page(page_image: Image.Image, pdf_canvas: canvas.Canvas, page_width:
     :param target_language: The target language for translation
     """
     page_image = page_image.convert("RGB")
-    layout = get_layout(page_image)
+    layout = get_layout(page_image, model_type)
     text_regions, image_regions = merge_overlapping_text_regions(layout)
 
     process_text_regions(text_regions, page_image, pdf_canvas, page_width, page_height, base_style, target_language)

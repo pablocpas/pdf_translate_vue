@@ -5,6 +5,7 @@ import axios, {
   AxiosRequestConfig 
 } from 'axios';
 import { useAuthStore } from '@/stores/authStore';
+import { useTranslationStore } from '@/stores/translationStore';
 import { ApiErrorSchema, ApiRequestError, AuthenticationError, NetworkError } from '@/types/api';
 
 const MAX_RETRIES = 3;
@@ -34,8 +35,14 @@ const apiClient = axios.create({
 // Interceptor para añadir token de autenticación
 apiClient.interceptors.request.use((config) => {
   const store = useAuthStore();
+  const translationStore = useTranslationStore();
+  
   if (store.token) {
     config.headers.Authorization = `Bearer ${store.token}`;
+  }
+  
+  if (translationStore.selectedModel && config.data instanceof FormData) {
+    config.data.append('model', translationStore.selectedModel);
   }
   return config;
 });

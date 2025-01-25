@@ -3,31 +3,38 @@ from shapely.geometry import box, Polygon, MultiPolygon, GeometryCollection
 from shapely.ops import unary_union
 import logging
 from PIL import Image
-from ...infrastructure.config.settings import MODEL_CONFIG_PATH, MODEL_PATH, LABEL_MAP, EXTRA_CONFIG
-# Variable global para el modelo
+from ...infrastructure.config.settings import MODEL_CONFIGS, LABEL_MAPS, EXTRA_CONFIG
+
+logger = logging.getLogger(__name__)
 
 class LayoutModel:
-    _instance = None  # Variable estática para almacenar la instancia única del modelo
+    _instances = {}  # Dictionary to store instances for each model type
 
-    def __new__(cls, *args, **kwargs):
-        """Garantiza que solo se cree una instancia del modelo."""
-        if cls._instance is None:
-            cls._instance = super(LayoutModel, cls).__new__(cls, *args, **kwargs)
-            cls._instance._initialize_model()
-        return cls._instance
+    def __new__(cls, model_type="primalayout"):
+        """Garantiza que solo se cree una instancia por tipo de modelo."""
+        if model_type not in cls._instances:
+            instance = super(LayoutModel, cls).__new__(cls)
+            instance._initialize_model(model_type)
+            cls._instances[model_type] = instance
+        return cls._instances[model_type]
 
-    def _initialize_model(self):
-        """Inicializa el modelo Detectron2LayoutModel."""
+    def _initialize_model(self, model_type):
+        """Inicializa el modelo Detectron2LayoutModel con la configuración específica."""
         try:
+            if model_type not in MODEL_CONFIGS:
+                logger.warning(f"Modelo {model_type} no encontrado, usando primalayout")
+                model_type = "primalayout"
+
+            config = MODEL_CONFIGS[model_type]
             self.model = lp.Detectron2LayoutModel(
-                config_path=MODEL_CONFIG_PATH,
-                model_path=MODEL_PATH,
-                label_map=LABEL_MAP,
+                config_path=config['config_path'],
+                model_path=config['model_path'],
+                label_map=LABEL_MAPS[model_type],
                 extra_config=EXTRA_CONFIG
             )
-            logging.info("Modelo Detectron2LayoutModel cargado correctamente.")
+            logger.info(f"Modelo {model_type} cargado correctamente")
         except Exception as e:
-            logging.error(f"Error cargando el modelo Detectron2LayoutModel: {e}")
+            logger.error(f"Error cargando el modelo {model_type}: {e}")
             raise
 
     def get_model(self):
@@ -35,13 +42,23 @@ class LayoutModel:
         return self.model
 
 
-def get_layout(image):
+def get_layout(image, model_type="primalayout"):
+    """
+    Obtiene el layout de una imagen usando el modelo especificado.
+    
+    Args:
+        image: Imagen a procesar
+        model_type: Tipo de modelo a usar ('primalayout' o 'publaynet')
+    
+    Returns:
+        Layout detectado
+    """
     try:
-        model = LayoutModel().get_model()
+        model = LayoutModel(model_type).get_model()
         layout = model.detect(image)
         return layout
     except Exception as e:
-        logging.error(f"Error al obtener el layout de la imagen: {e}")
+        logger.error(f"Error al obtener el layout de la imagen: {e}")
         return lp.Layout([])
 
 
