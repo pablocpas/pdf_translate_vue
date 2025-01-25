@@ -21,7 +21,7 @@
         @click="handleModelSelect(model.id)"
       >
         <div class="model-icon-wrapper">
-          <img :src="model.icon" :alt="model.name" class="model-icon" />
+          <span class="model-icon">{{ model.icon }}</span>
         </div>
         <div class="model-info">
           <span class="model-name">
@@ -40,7 +40,7 @@
     <div v-else class="selected-model">
       <div class="model-card model-selected">
         <div class="model-icon-wrapper">
-          <img :src="modelIcons[modelValue]" :alt="modelNames[modelValue]" class="model-icon" />
+          <span class="model-icon">{{ modelIcons[modelValue] }}</span>
         </div>
         <div class="model-info">
           <span class="model-name">
@@ -57,8 +57,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useTranslationStore } from '@/stores/translationStore';
-
-type ModelType = 'primalayout' | 'publaynet';
+import { ModelType } from '@/types';
 
 interface Model {
   id: ModelType;
@@ -91,13 +90,13 @@ const modelDescriptions: Record<ModelType, string> = {
   'publaynet': 'Especializado en papers y documentos académicos'
 } as const;
 
-const modelIcons = computed<Record<ModelType, string>>(() => ({
-  'primalayout': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxyZWN0IHg9IjMiIHk9IjMiIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCIgcng9IjIiIHJ5PSIyIj48L3JlY3Q+PGxpbmUgeDE9IjMiIHkxPSI5IiB4Mj0iMjEiIHkyPSI5Ij48L2xpbmU+PGxpbmUgeDE9IjkiIHkxPSIyMSIgeDI9IjkiIHkyPSI5Ij48L2xpbmU+PC9zdmc+',
-  'publaynet': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0yIDNoNmE0IDQgMCAwIDEgNCA0djE0YTMgMyAwIDAgMC0zLTNoLTdhMyAzIDAgMCAxLTMtM1Y2YTMgMyAwIDAgMSAzLTN6Ij48L3BhdGg+PHBhdGggZD0iTTIyIDNoLTZhNCA0IDAgMCAwLTQgNHYxNGEzIDMgMCAwIDEgMy0zaDdhMyAzIDAgMCAwIDMtM1Y2YTMgMyAwIDAgMC0zLTN6Ij48L3BhdGg+PC9zdmc+'
-}));
+const modelIcons: Record<ModelType, string> = {
+  'primalayout': '📃',
+  'publaynet': '🎓'
+} as const;
 
 const models = computed<Model[]>(() => {
-  return Object.entries(modelIcons.value).map(([id, icon]) => ({
+  return Object.entries(modelIcons).map(([id, icon]) => ({
     id: id as ModelType,
     name: modelNames[id as keyof typeof modelNames],
     description: modelDescriptions[id as keyof typeof modelDescriptions],
@@ -214,9 +213,8 @@ const handleModelSelect = (model: ModelType) => {
 }
 
 .model-icon {
-  width: 24px;
-  height: 24px;
-  object-fit: contain;
+  font-size: 24px;
+  line-height: 1;
 }
 
 .model-info {

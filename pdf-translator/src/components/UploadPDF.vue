@@ -100,6 +100,7 @@ import { z } from 'zod';
 import { useAuthStore } from '@/stores/authStore';
 import { useTranslationStore } from '@/stores/translationStore';
 import { uploadPdf, getTranslationStatus } from '@/api/pdfs';
+import { ModelType } from '@/types';
 import { ApiRequestError, NetworkError } from '@/types/api';
 import FileUploader from './FileUploader.vue';
 import ModelSelect from './ModelSelect.vue';
@@ -116,7 +117,10 @@ const ALLOWED_MIME_TYPES = ['application/pdf'];
 
 // Esquema de validación
 const schema = z.object({
-  model: z.string().min(1, 'Por favor selecciona un modelo'),
+  model: z.custom<ModelType>(
+    (val): val is ModelType => val === 'primalayout' || val === 'publaynet',
+    { message: 'Por favor selecciona un modelo válido' }
+  ),
   file: z.custom<File>(
     (file) => file instanceof File && 
               ALLOWED_MIME_TYPES.includes(file.type) &&
@@ -130,7 +134,7 @@ const schema = z.object({
 
 // Estado del formulario
 const form = reactive({
-  model: translationStore.selectedModel,
+  model: translationStore.selectedModel as ModelType,
   file: null as File | null,
   targetLanguage: 'es',
 });
