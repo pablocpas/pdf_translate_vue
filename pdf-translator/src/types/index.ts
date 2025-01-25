@@ -20,3 +20,5 @@ export interface TranslationTask {
   originalFile: string;
   translatedFile: string | null;
 }
+
+export type ModelType = 'primalayout' | 'publaynet';

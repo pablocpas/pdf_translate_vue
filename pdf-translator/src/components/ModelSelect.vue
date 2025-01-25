@@ -2,8 +2,8 @@
   <div class="form-group">
     <div class="header-row">
       <label class="form-label">
-        Modelo de IA
-        <span class="tooltip-icon" title="Modelos de IA proporcionados por OpenRouter">?</span>
+        Modelo de Segmentación
+        <span class="tooltip-icon" title="Modelos de segmentación para diferentes tipos de documentos">?</span>
       </label>
       <button type="button" class="advanced-toggle" @click="showAdvanced = !showAdvanced">
         {{ showAdvanced ? 'Ocultar opciones avanzadas' : 'Mostrar opciones avanzadas' }}
@@ -24,7 +24,10 @@
           <img :src="model.icon" :alt="model.name" class="model-icon" />
         </div>
         <div class="model-info">
-          <span class="model-name">{{ model.name }}</span>
+          <span class="model-name">
+            {{ model.name }}
+            <span v-if="model.id === 'primalayout'" class="recommended-badge">Recomendado</span>
+          </span>
           <span class="model-description">{{ model.description }}</span>
         </div>
         <div class="check-icon" v-if="modelValue === model.id">
@@ -37,11 +40,14 @@
     <div v-else class="selected-model">
       <div class="model-card model-selected">
         <div class="model-icon-wrapper">
-          <img :src="models.find(m => m.id === modelValue)?.icon" :alt="models.find(m => m.id === modelValue)?.name" class="model-icon" />
+          <img :src="modelIcons[modelValue]" :alt="modelNames[modelValue]" class="model-icon" />
         </div>
         <div class="model-info">
-          <span class="model-name">{{ models.find(m => m.id === modelValue)?.name }}</span>
-          <span class="model-description">{{ models.find(m => m.id === modelValue)?.description }}</span>
+          <span class="model-name">
+            {{ modelNames[modelValue] }}
+            <span v-if="modelValue === 'primalayout'" class="recommended-badge">Recomendado</span>
+          </span>
+          <span class="model-description">{{ modelDescriptions[modelValue] }}</span>
         </div>
       </div>
     </div>
@@ -52,33 +58,7 @@
 import { computed, ref } from 'vue';
 import { useTranslationStore } from '@/stores/translationStore';
 
-type ModelType = 'gpt4o-mini' | 'claude3.5-haiku' | 'gemini-flash' | 'deepseek-v3';
-
-const props = defineProps<{
-  modelValue: string;
-  error?: string;
-}>();
-
-const emit = defineEmits<{
-  (e: 'update:modelValue', value: string): void;
-}>();
-
-const showAdvanced = ref(false);
-const store = useTranslationStore();
-
-const modelNames: Record<ModelType, string> = {
-  'gpt4o-mini': 'GPT-4o Mini',
-  'claude3.5-haiku': 'Claude 3.5 Haiku',
-  'gemini-flash': 'Gemini Flash',
-  'deepseek-v3': 'DeepSeek v3'
-};
-
-const modelDescriptions: Record<ModelType, string> = {
-  'gpt4o-mini': 'Rápido y eficiente para textos cortos',
-  'claude3.5-haiku': 'Excelente para documentos técnicos',
-  'gemini-flash': 'Ideal para traducciones precisas',
-  'deepseek-v3': 'Perfecto para documentos largos'
-};
+type ModelType = 'primalayout' | 'publaynet';
 
 interface Model {
   id: ModelType;
@@ -86,6 +66,35 @@ interface Model {
   description: string;
   icon: string;
 }
+
+const props = withDefaults(defineProps<{
+  modelValue: ModelType;
+  error?: string;
+}>(), {
+  error: undefined
+});
+
+const emit = defineEmits<{
+  'update:modelValue': [value: ModelType];
+}>();
+
+const showAdvanced = ref(false);
+const store = useTranslationStore();
+
+const modelNames: Record<ModelType, string> = {
+  'primalayout': 'PrimaLayout',
+  'publaynet': 'PubLayNet'
+} as const;
+
+const modelDescriptions: Record<ModelType, string> = {
+  'primalayout': 'Optimizado para documentos generales (recomendado)',
+  'publaynet': 'Especializado en papers y documentos académicos'
+} as const;
+
+const modelIcons = computed<Record<ModelType, string>>(() => ({
+  'primalayout': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxyZWN0IHg9IjMiIHk9IjMiIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCIgcng9IjIiIHJ5PSIyIj48L3JlY3Q+PGxpbmUgeDE9IjMiIHkxPSI5IiB4Mj0iMjEiIHkyPSI5Ij48L2xpbmU+PGxpbmUgeDE9IjkiIHkxPSIyMSIgeDI9IjkiIHkyPSI5Ij48L2xpbmU+PC9zdmc+',
+  'publaynet': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0yIDNoNmE0IDQgMCAwIDEgNCA0djE0YTMgMyAwIDAgMC0zLTNoLTdhMyAzIDAgMCAxLTMtM1Y2YTMgMyAwIDAgMSAzLTN6Ij48L3BhdGg+PHBhdGggZD0iTTIyIDNoLTZhNCA0IDAgMCAwLTQgNHYxNGEzIDMgMCAwIDEgMy0zaDdhMyAzIDAgMCAwIDMtM1Y2YTMgMyAwIDAgMC0zLTN6Ij48L3BhdGg+PC9zdmc+'
+}));
 
 const models = computed<Model[]>(() => {
   return Object.entries(modelIcons.value).map(([id, icon]) => ({
@@ -95,8 +104,6 @@ const models = computed<Model[]>(() => {
     icon
   }));
 });
-
-const modelIcons = computed<Record<ModelType, string>>(() => store.modelIcons);
 
 const handleModelSelect = (model: ModelType) => {
   store.setSelectedModel(model);
@@ -223,6 +230,18 @@ const handleModelSelect = (model: ModelType) => {
   color: #1a1b1e;
   font-size: 0.875rem;
   margin-bottom: 0.25rem;
+}
+
+.recommended-badge {
+  display: inline-block;
+  background: #37b24d;
+  color: white;
+  font-size: 0.6875rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  margin-left: 0.5rem;
+  font-weight: 500;
+  vertical-align: middle;
 }
 
 .model-description {
