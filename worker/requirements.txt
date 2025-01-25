@@ -1,3 +1,10 @@
-celery>=5.3.0
-redis>=4.5.0
-# Add any PDF processing libraries here that will be needed for translation
+fvcore==0.1.5.post20221221
+layoutparser==0.3.4
+pytesseract==0.3.13
+reportlab==4.2.5
+shapely==2.0.6
+openai==1.60.1
+celery==5.4.0
+redis==5.2.1
+pdf2image==1.17.0
+numpy==1.24.4
