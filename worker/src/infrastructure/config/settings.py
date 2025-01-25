@@ -16,17 +16,42 @@ MARGIN = 20
 DEBUG_MODE = False
 
 # Layout parser model configuration
-MODEL_CONFIG_PATH = './models/config.yaml'
-MODEL_PATH = './models/model_final.pth'
-LABEL_MAP = {
-    1: "TextRegion",
-    2: "ImageRegion",
-    3: "TableRegion",
-    4: "MathsRegion",
-    5: "SeparatorRegion",
-    6: "OtherRegion"
+MODEL_TYPE = "primalayout"  # "primalayout" o "publaynet"
+
+# Configuración Primalayout (general)
+PRIMALAYOUT_CONFIG = {
+    "MODEL_CONFIG_PATH": './models/primalayout/config.yaml',
+    "MODEL_PATH": './models/primalayout/model_final.pth',
+    "LABEL_MAP": {
+        1: "TextRegion",
+        2: "ImageRegion", 
+        3: "TableRegion",
+        4: "MathsRegion",
+        5: "SeparatorRegion",
+        6: "OtherRegion"
+    },
+    "EXTRA_CONFIG": ["MODEL.ROI_HEADS.SCORE_THRESH_TEST", 0.7]
 }
-EXTRA_CONFIG = ["MODEL.ROI_HEADS.SCORE_THRESH_TEST", 0.7]
+
+# Configuración PubLayNet (científicos)
+PUBLAYNET_CONFIG = {
+    "MODEL_CONFIG_PATH": './models/publaynet/config.yaml',
+    "MODEL_PATH": './models/publaynet/model_final.pth',
+    "LABEL_MAP": {
+        0: "Text",
+        1: "Title",
+        2: "List",
+        3: "Table",
+        4: "Figure"
+    },
+    "EXTRA_CONFIG": ["MODEL.ROI_HEADS.SCORE_THRESH_TEST", 0.7]
+}
+
+# Configuración activa
+MODEL_CONFIG_PATH = PRIMALAYOUT_CONFIG["MODEL_CONFIG_PATH"] if MODEL_TYPE == "primalayout" else PUBLAYNET_CONFIG["MODEL_CONFIG_PATH"]
+MODEL_PATH = PRIMALAYOUT_CONFIG["MODEL_PATH"] if MODEL_TYPE == "primalayout" else PUBLAYNET_CONFIG["MODEL_PATH"]
+LABEL_MAP = PRIMALAYOUT_CONFIG["LABEL_MAP"] if MODEL_TYPE == "primalayout" else PUBLAYNET_CONFIG["LABEL_MAP"]
+EXTRA_CONFIG = PRIMALAYOUT_CONFIG["EXTRA_CONFIG"] if MODEL_TYPE == "primalayout" else PUBLAYNET_CONFIG["EXTRA_CONFIG"]
 
 # File paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

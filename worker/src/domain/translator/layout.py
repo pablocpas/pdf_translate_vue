@@ -3,7 +3,8 @@ from shapely.geometry import box, Polygon, MultiPolygon, GeometryCollection
 from shapely.ops import unary_union
 import logging
 from PIL import Image
-from ...infrastructure.config.settings import MODEL_CONFIG_PATH, MODEL_PATH, LABEL_MAP, EXTRA_CONFIG
+from ...infrastructure.config.settings import MODEL_CONFIG_PATH, MODEL_PATH, LABEL_MAP, EXTRA_CONFIG, MODEL_TYPE
+
 # Variable global para el modelo
 
 class LayoutModel:
@@ -56,13 +57,26 @@ def merge_overlapping_text_regions(layout: lp.Layout):
         Tuple[List[Tuple[lp.Rectangle, str]], List[Tuple[Any, str]]]: 
             Regiones de texto fusionadas y regiones de imagen.
     """
-    # Extraer regiones de texto e imagen
-    text_rects = [
-        box(*element.coordinates)
-        for element in layout
-        if element.type == "TextRegion"
-    ]
-    images = [element for element in layout if element.type == "ImageRegion"]
+    # Extraer regiones según modelo activo
+    if MODEL_TYPE == "publaynet":
+        # Para PublayNet: Texto = Text/Title, Imágenes = List/Table/Figure
+        text_rects = [
+            box(*element.coordinates)
+            for element in layout
+            if element.type in ["Text", "Title"]
+        ]
+        images = [
+            element for element in layout
+            if element.type in ["List", "Table", "Figure"]
+        ]
+    else:
+        # Para Primalayout: Texto = TextRegion, Imágenes = ImageRegion
+        text_rects = [
+            box(*element.coordinates)
+            for element in layout
+            if element.type == "TextRegion"
+        ]
+        images = [element for element in layout if element.type == "ImageRegion"]
 
     # Fusionar regiones de texto superpuestas
     merged_text_polygons = unary_union(text_rects)
