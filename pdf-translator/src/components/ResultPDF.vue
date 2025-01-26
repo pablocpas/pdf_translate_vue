@@ -3,14 +3,6 @@
     <div class="result-card">
       <h2 class="title">Resultado de la traducción</h2>
 
-      <!-- Error general -->
-      <div v-if="error" class="error-banner">
-        {{ error }}
-        <button class="retry-button" @click="checkStatus" :disabled="isLoading">
-          Reintentar
-        </button>
-      </div>
-
       <!-- Estado de procesamiento -->
       <div v-if="isProcessing" class="processing-status">
         <div class="spinner"></div>
@@ -64,7 +56,6 @@
       <button
         class="new-translation-button"
         @click="router.push('/')"
-        :disabled="isLoading"
       >
         Traducir otro PDF
       </button>
@@ -77,14 +68,10 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useTranslationStore } from '@/stores/translationStore';
 import { getTranslationStatus } from '@/api/pdfs';
-import { ApiRequestError, NetworkError } from '@/types/api';
 
 const router = useRouter();
 const translationStore = useTranslationStore();
 const currentTask = computed(() => translationStore.currentTask);
-
-const error = ref<string>('');
-const isLoading = ref(false);
 const checkInterval = ref<number>();
 
 const originalPdfUrl = computed(() => 
@@ -110,34 +97,20 @@ const isCompleted = computed(() =>
 
 async function checkStatus() {
   if (!currentTask.value?.id) {
-    error.value = 'No hay tarea de traducción activa';
+    router.push('/');
     return;
   }
-
-  isLoading.value = true;
-  error.value = '';
 
   try {
     const task = await getTranslationStatus(currentTask.value.id);
     translationStore.setCurrentTask(task);
 
-    if (task.status === 'failed') {
-      error.value = task.error || 'Error en la traducción';
-      clearInterval(checkInterval.value);
-    } else if (task.status === 'completed') {
+    if (task.status === 'failed' || task.status === 'completed') {
       clearInterval(checkInterval.value);
     }
   } catch (e) {
-    if (e instanceof ApiRequestError) {
-      error.value = e.message;
-    } else if (e instanceof NetworkError) {
-      error.value = 'Error de conexión. Por favor, intenta de nuevo.';
-    } else {
-      error.value = 'Error inesperado al verificar el estado.';
-    }
+    console.error('Error al verificar estado:', e);
     clearInterval(checkInterval.value);
-  } finally {
-    isLoading.value = false;
   }
 }
 
@@ -195,45 +168,6 @@ onUnmounted(() => {
   color: #1a1b1e;
   font-weight: 600;
   letter-spacing: -0.01em;
-}
-
-.error-banner {
-  background-color: #fff5f5;
-  border: 2px solid #ffc9c9;
-  border-radius: 8px;
-  color: #e03131;
-  padding: 1.25rem;
-  margin-bottom: 2rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  animation: shake 0.5s ease-in-out;
-}
-
-.retry-button {
-  background: transparent;
-  border: 2px solid #e03131;
-  color: #e03131;
-  padding: 0.625rem 1.25rem;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.2s ease;
-}
-
-.retry-button:hover {
-  background: rgba(224, 49, 49, 0.1);
-  transform: translateY(-1px);
-}
-
-.retry-button:active {
-  transform: translateY(1px);
-}
-
-.retry-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
 }
 
 .processing-status {
@@ -386,11 +320,5 @@ onUnmounted(() => {
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-4px); }
-  75% { transform: translateX(4px); }
 }
 </style>
