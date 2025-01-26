@@ -74,12 +74,48 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Supported languages
 SUPPORTED_LANGUAGES = {
-    'es': 'Spanish',
-    'en': 'English',
-    'fr': 'French',
+    # European Languages
     'de': 'German',
+    'ca': 'Catalan',
+    'hr': 'Croatian',
+    'da': 'Danish',
+    'sk': 'Slovak',
+    'sl': 'Slovenian',
+    'es': 'Spanish',
+    'fi': 'Finnish',
+    'fr': 'French',
+    'nl': 'Dutch',
+    'hu': 'Hungarian',
+    'en': 'English',
     'it': 'Italian',
-    # Add more languages as needed
+    'no': 'Norwegian',
+    'pl': 'Polish',
+    'pt': 'Portuguese',
+    'ro': 'Romanian',
+    'sv': 'Swedish',
+    'tr': 'Turkish',
+    'gl': 'Galician',
+    'eu': 'Basque',
+    
+    # Cyrillic Languages
+    'ru': 'Russian',
+    'uk': 'Ukrainian',
+    'bg': 'Bulgarian',
+    
+    # East Asian Languages
+    'zh': 'Chinese (Mandarin)',
+    'ja': 'Japanese',
+    'ko': 'Korean',
+    
+    # Other Scripts
+    'ar': 'Arabic',
+    'he': 'Hebrew',
+    'el': 'Greek',
+    'hi': 'Hindi',
+    'bn': 'Bengali',
+    'ta': 'Tamil',
+    'th': 'Thai',
+    'vi': 'Vietnamese'
 }
 
 # Default language (can be used as a fallback if needed)

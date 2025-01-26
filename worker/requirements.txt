@@ -2,6 +2,7 @@ fvcore==0.1.5.post20221221
 layoutparser==0.3.4
 pytesseract==0.3.13
 reportlab==4.2.5
+reportlab-cjk==0.2.0
 shapely==2.0.6
 openai==1.60.1
 celery==5.4.0

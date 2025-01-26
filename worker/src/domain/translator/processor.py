@@ -7,7 +7,38 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import Paragraph
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from PIL import Image
+import os
+
+# Register fonts for different scripts
+FONTS_DIR = os.path.join(os.path.dirname(__file__), "fonts")
+os.makedirs(FONTS_DIR, exist_ok=True)
+
+# Register CID fonts for CJK languages
+pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W3'))  # Japanese
+pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJo-Medium'))  # Korean
+pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))  # Chinese
+
+def get_font_for_language(target_language: str) -> str:
+    """
+    Returns the appropriate font based on the target language.
+    """
+    cjk_fonts = {
+        'ja': 'HeiseiMin-W3',  # Japanese
+        'ko': 'HYSMyeongJo-Medium',  # Korean
+        'zh': 'STSong-Light',  # Chinese
+    }
+    
+    # Return CJK font if language is CJK
+    if target_language in cjk_fonts:
+        print("vaya japo")
+        return cjk_fonts[target_language]
+    
+    # Default to Helvetica for Latin scripts and others
+    return 'Helvetica'
 
 from .layout import get_layout, merge_overlapping_text_regions
 from .ocr import extract_text_from_image
@@ -88,6 +119,8 @@ def process_page(page_image: Image.Image, pdf_canvas: canvas.Canvas, page_width:
     
 
 def process_text_regions(text_regions: List[Tuple[Any, Any]], page_image: Image.Image, pdf_canvas: canvas.Canvas, page_width: float, page_height: float, base_style: ParagraphStyle, target_language: str) -> None:
+    # Set the appropriate font for the target language
+    font_name = get_font_for_language(target_language)
     """
     Process text regions of a page.
 
@@ -138,8 +171,10 @@ def process_text_regions(text_regions: List[Tuple[Any, Any]], page_image: Image.
         paragraph_style = ParagraphStyle(
             name="CustomStyle",
             parent=base_style,
+            fontName=font_name,
             fontSize=initial_font_size,
-            leading=initial_font_size * 1.2
+            leading=initial_font_size * 1.2,
+            encoding='utf-8'
         )
         paragraph = Paragraph(translated_text, paragraph_style)
         paragraph = adjust_paragraph_font_size(

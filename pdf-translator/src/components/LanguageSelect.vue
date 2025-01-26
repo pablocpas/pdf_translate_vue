@@ -33,12 +33,48 @@
 import type { Language } from '@/types';
 
 const languages: Language[] = [
-  { code: 'es', name: 'Spanish', nativeName: 'Español' },
-  { code: 'en', name: 'English', nativeName: 'English' },
-  { code: 'fr', name: 'French', nativeName: 'Français' },
+  // European Languages
   { code: 'de', name: 'German', nativeName: 'Deutsch' },
+  { code: 'ca', name: 'Catalan', nativeName: 'Català' },
+  { code: 'hr', name: 'Croatian', nativeName: 'Hrvatski' },
+  { code: 'da', name: 'Danish', nativeName: 'Dansk' },
+  { code: 'sk', name: 'Slovak', nativeName: 'Slovenčina' },
+  { code: 'sl', name: 'Slovenian', nativeName: 'Slovenščina' },
+  { code: 'es', name: 'Spanish', nativeName: 'Español' },
+  { code: 'fi', name: 'Finnish', nativeName: 'Suomi' },
+  { code: 'fr', name: 'French', nativeName: 'Français' },
+  { code: 'nl', name: 'Dutch', nativeName: 'Nederlands' },
+  { code: 'hu', name: 'Hungarian', nativeName: 'Magyar' },
+  { code: 'en', name: 'English', nativeName: 'English' },
   { code: 'it', name: 'Italian', nativeName: 'Italiano' },
+  { code: 'no', name: 'Norwegian', nativeName: 'Norsk' },
+  { code: 'pl', name: 'Polish', nativeName: 'Polski' },
   { code: 'pt', name: 'Portuguese', nativeName: 'Português' },
+  { code: 'ro', name: 'Romanian', nativeName: 'Română' },
+  { code: 'sv', name: 'Swedish', nativeName: 'Svenska' },
+  { code: 'tr', name: 'Turkish', nativeName: 'Türkçe' },
+  { code: 'gl', name: 'Galician', nativeName: 'Galego' },
+  { code: 'eu', name: 'Basque', nativeName: 'Euskara' },
+
+  // Cyrillic Languages
+  { code: 'ru', name: 'Russian', nativeName: 'Русский' },
+  { code: 'uk', name: 'Ukrainian', nativeName: 'Українська' },
+  { code: 'bg', name: 'Bulgarian', nativeName: 'Български' },
+
+  // East Asian Languages
+  { code: 'zh', name: 'Chinese (Mandarin)', nativeName: '中文' },
+  { code: 'ja', name: 'Japanese', nativeName: '日本語' },
+  { code: 'ko', name: 'Korean', nativeName: '한국어' },
+
+  // Other Scripts
+  { code: 'ar', name: 'Arabic', nativeName: 'العربية' },
+  { code: 'he', name: 'Hebrew', nativeName: 'עברית' },
+  { code: 'el', name: 'Greek', nativeName: 'Ελληνικά' },
+  { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी' },
+  { code: 'bn', name: 'Bengali', nativeName: 'বাংলা' },
+  { code: 'ta', name: 'Tamil', nativeName: 'தமிழ்' },
+  { code: 'th', name: 'Thai', nativeName: 'ไทย' },
+  { code: 'vi', name: 'Vietnamese', nativeName: 'Tiếng Việt' }
 ];
 
 defineProps<{
