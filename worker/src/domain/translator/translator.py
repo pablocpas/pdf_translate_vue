@@ -8,7 +8,7 @@ from ...infrastructure.config.settings import GPT_MODEL, OPENAI_API_KEY
 # Configura el cliente con tu base_url y API Key de OpenRouter o OpenAI:
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key="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",
+    api_key=OPENAI_API_KEY,
 )
 
 # Mapeo ISO -> nombre de idioma
