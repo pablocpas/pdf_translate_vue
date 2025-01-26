@@ -16,7 +16,7 @@
           :value="lang.code"
           class="language-option"
         >
-          {{ getFlagEmoji(lang.code) }} {{ lang.nativeName }} ({{ lang.name }})
+          {{ lang.nativeName }} ({{ lang.name }})
         </option>
       </select>
       <div class="select-arrow">
@@ -34,47 +34,47 @@ import type { Language } from '@/types';
 
 const languages: Language[] = [
   // European Languages
-  { code: 'de', name: 'German', nativeName: 'Deutsch' },
-  { code: 'ca', name: 'Catalan', nativeName: 'Català' },
-  { code: 'hr', name: 'Croatian', nativeName: 'Hrvatski' },
-  { code: 'da', name: 'Danish', nativeName: 'Dansk' },
-  { code: 'sk', name: 'Slovak', nativeName: 'Slovenčina' },
-  { code: 'sl', name: 'Slovenian', nativeName: 'Slovenščina' },
-  { code: 'es', name: 'Spanish', nativeName: 'Español' },
-  { code: 'fi', name: 'Finnish', nativeName: 'Suomi' },
-  { code: 'fr', name: 'French', nativeName: 'Français' },
-  { code: 'nl', name: 'Dutch', nativeName: 'Nederlands' },
-  { code: 'hu', name: 'Hungarian', nativeName: 'Magyar' },
-  { code: 'en', name: 'English', nativeName: 'English' },
-  { code: 'it', name: 'Italian', nativeName: 'Italiano' },
-  { code: 'no', name: 'Norwegian', nativeName: 'Norsk' },
-  { code: 'pl', name: 'Polish', nativeName: 'Polski' },
-  { code: 'pt', name: 'Portuguese', nativeName: 'Português' },
-  { code: 'ro', name: 'Romanian', nativeName: 'Română' },
-  { code: 'sv', name: 'Swedish', nativeName: 'Svenska' },
-  { code: 'tr', name: 'Turkish', nativeName: 'Türkçe' },
-  { code: 'gl', name: 'Galician', nativeName: 'Galego' },
-  { code: 'eu', name: 'Basque', nativeName: 'Euskara' },
+  { code: 'de', name: 'German', nativeName: 'Deutsch' },                   // Alemania
+  { code: 'es-ct', name: 'Catalan', nativeName: 'Català' },                // Cataluña
+  { code: 'hr', name: 'Croatian', nativeName: 'Hrvatski' },                // Croacia
+  { code: 'dk', name: 'Danish', nativeName: 'Dansk' },                     // Dinamarca
+  { code: 'sk', name: 'Slovak', nativeName: 'Slovenčina' },                // Eslovaquia
+  { code: 'si', name: 'Slovenian', nativeName: 'Slovenščina' },            // Eslovenia
+  { code: 'es', name: 'Spanish', nativeName: 'Español' },                  // España
+  { code: 'fi', name: 'Finnish', nativeName: 'Suomi' },                    // Finlandia
+  { code: 'fr', name: 'French', nativeName: 'Français' },                  // Francia
+  { code: 'nl', name: 'Dutch', nativeName: 'Nederlands' },                 // Países Bajos
+  { code: 'hu', name: 'Hungarian', nativeName: 'Magyar' },                 // Hungría
+  { code: 'gb', name: 'English', nativeName: 'English' },                  // Reino Unido
+  { code: 'it', name: 'Italian', nativeName: 'Italiano' },                 // Italia
+  { code: 'no', name: 'Norwegian', nativeName: 'Norsk' },                  // Noruega
+  { code: 'pl', name: 'Polish', nativeName: 'Polski' },                    // Polonia
+  { code: 'pt', name: 'Portuguese', nativeName: 'Português' },             // Portugal
+  { code: 'ro', name: 'Romanian', nativeName: 'Română' },                  // Rumania
+  { code: 'se', name: 'Swedish', nativeName: 'Svenska' },                  // Suecia
+  { code: 'tr', name: 'Turkish', nativeName: 'Türkçe' },                   // Turquía
+  { code: 'es-ga', name: 'Galician', nativeName: 'Galego' },               // Galicia
+  { code: 'es-pv', name: 'Basque', nativeName: 'Euskara' },                // País Vasco
 
   // Cyrillic Languages
-  { code: 'ru', name: 'Russian', nativeName: 'Русский' },
-  { code: 'uk', name: 'Ukrainian', nativeName: 'Українська' },
-  { code: 'bg', name: 'Bulgarian', nativeName: 'Български' },
+  { code: 'ru', name: 'Russian', nativeName: 'Русский' },                  // Rusia
+  { code: 'ua', name: 'Ukrainian', nativeName: 'Українська' },             // Ucrania
+  { code: 'bg', name: 'Bulgarian', nativeName: 'Български' },              // Bulgaria
 
   // East Asian Languages
-  { code: 'zh', name: 'Chinese (Mandarin)', nativeName: '中文' },
-  { code: 'ja', name: 'Japanese', nativeName: '日本語' },
-  { code: 'ko', name: 'Korean', nativeName: '한국어' },
+  { code: 'cn', name: 'Chinese (Mandarin)', nativeName: '中文' },          // China
+  { code: 'jp', name: 'Japanese', nativeName: '日本語' },                  // Japón
+  { code: 'kr', name: 'Korean', nativeName: '한국어' },                    // Corea del Sur
 
   // Other Scripts
-  { code: 'ar', name: 'Arabic', nativeName: 'العربية' },
-  { code: 'he', name: 'Hebrew', nativeName: 'עברית' },
-  { code: 'el', name: 'Greek', nativeName: 'Ελληνικά' },
-  { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी' },
-  { code: 'bn', name: 'Bengali', nativeName: 'বাংলা' },
-  { code: 'ta', name: 'Tamil', nativeName: 'தமிழ்' },
-  { code: 'th', name: 'Thai', nativeName: 'ไทย' },
-  { code: 'vi', name: 'Vietnamese', nativeName: 'Tiếng Việt' }
+  { code: 'arab', name: 'Arabic', nativeName: 'العربية' },                 // Liga Árabe
+  { code: 'il', name: 'Hebrew', nativeName: 'עברית' },                     // Israel
+  { code: 'gr', name: 'Greek', nativeName: 'Ελληνικά' },                   // Grecia
+  { code: 'in', name: 'Hindi', nativeName: 'हिन्दी' },                     // India
+  { code: 'bd', name: 'Bengali', nativeName: 'বাংলা' },                    // Bangladesh
+  { code: 'lk', name: 'Tamil', nativeName: 'தமிழ்' },                      // Sri Lanka
+  { code: 'th', name: 'Thai', nativeName: 'ไทย' },                         // Tailandia
+  { code: 'vn', name: 'Vietnamese', nativeName: 'Tiếng Việt' }             // Vietnam
 ];
 
 defineProps<{
@@ -86,13 +86,6 @@ defineEmits<{
   (e: 'update:modelValue', value: string): void;
 }>();
 
-const getFlagEmoji = (countryCode: string) => {
-  const codePoints = countryCode
-    .toUpperCase()
-    .split('')
-    .map(char => 127397 + char.charCodeAt(0));
-  return String.fromCodePoint(...codePoints);
-};
 </script>
 
 <style scoped>

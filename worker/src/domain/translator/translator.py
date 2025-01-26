@@ -13,12 +13,41 @@ client = OpenAI(
 
 # Mapeo ISO -> nombre de idioma
 LANGUAGE_MAP = {
-    'es': 'Spanish',
-    'en': 'English',
-    'fr': 'French',
     'de': 'German',
+    'es-ct': 'Catalan',
+    'hr': 'Croatian',
+    'dk': 'Danish',
+    'sk': 'Slovak',
+    'si': 'Slovenian',
+    'es': 'Spanish',
+    'fi': 'Finnish',
+    'fr': 'French',
+    'nl': 'Dutch',
+    'hu': 'Hungarian',
+    'gb': 'English',
     'it': 'Italian',
-    'pt': 'Portuguese'
+    'no': 'Norwegian',
+    'pl': 'Polish',
+    'pt': 'Portuguese',
+    'ro': 'Romanian',
+    'se': 'Swedish',
+    'tr': 'Turkish',
+    'es-ga': 'Galician',
+    'es-pv': 'Basque',
+    'ru': 'Russian',
+    'ua': 'Ukrainian',
+    'bg': 'Bulgarian',
+    'cn': 'Chinese (Mandarin)',
+    'jp': 'Japanese',
+    'kr': 'Korean',
+    'arab': 'Arabic',
+    'il': 'Hebrew',
+    'gr': 'Greek',
+    'in': 'Hindi',
+    'bd': 'Bengali',
+    'lk': 'Tamil',
+    'th': 'Thai',
+    'vn': 'Vietnamese'
 }
 
 # Clase Pydantic que define la estructura de la respuesta
