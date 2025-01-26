@@ -17,6 +17,9 @@ import os
 FONTS_DIR = os.path.join(os.path.dirname(__file__), "fonts")
 os.makedirs(FONTS_DIR, exist_ok=True)
 
+# Register Open Sans font
+pdfmetrics.registerFont(TTFont('OpenSans', os.path.join(FONTS_DIR, 'OpenSans-Regular.ttf')))
+
 # Register CID fonts for CJK languages
 pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W3'))  # Japanese
 pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJo-Medium'))  # Korean
@@ -34,11 +37,10 @@ def get_font_for_language(target_language: str) -> str:
     
     # Return CJK font if language is CJK
     if target_language in cjk_fonts:
-        print("vaya japo")
         return cjk_fonts[target_language]
     
-    # Default to Helvetica for Latin scripts and others
-    return 'Helvetica'
+    # Use Open Sans for all other scripts (Latin, Cyrillic, Greek, etc.)
+    return 'OpenSans'
 
 from .layout import get_layout, merge_overlapping_text_regions
 from .ocr import extract_text_from_image
