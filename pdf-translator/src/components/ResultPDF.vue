@@ -18,7 +18,7 @@
             <iframe
               :src="originalPdfUrl"
               width="100%"
-              height="600"
+              height="800"
               frameborder="0"
               title="PDF Original"
             ></iframe>
@@ -38,7 +38,7 @@
             <iframe
               :src="translatedPdfUrl"
               width="100%"
-              height="600"
+              height="800"
               frameborder="0"
               title="PDF Traducido"
             ></iframe>
@@ -136,10 +136,11 @@ onUnmounted(() => {
 
 <style scoped>
 .result-container {
-  max-width: 1200px;
-  margin: 2rem auto;
+  max-width: 1800px;
+  margin: 1rem auto;
   padding: 0 1rem;
   animation: fadeIn 0.5s ease-out;
+  min-height: calc(100vh - 2rem);
 }
 
 .result-card {
@@ -147,7 +148,10 @@ onUnmounted(() => {
   border-radius: 12px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.1);
   border: 1px solid rgba(0, 0, 0, 0.1);
-  padding: 2.5rem;
+  padding: 1.5rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .title {
@@ -211,8 +215,9 @@ onUnmounted(() => {
 .result-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 2.5rem;
-  margin: 2rem 0;
+  gap: 1.5rem;
+  margin: 1.5rem 0;
+  flex: 1;
 }
 
 @media (min-width: 768px) {
@@ -225,9 +230,10 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   background: #f8f9fa;
-  padding: 1.5rem;
+  padding: 1rem;
   border-radius: 12px;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  height: 100%;
 }
 
 .pdf-section:hover {

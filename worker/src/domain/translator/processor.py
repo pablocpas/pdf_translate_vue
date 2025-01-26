@@ -30,9 +30,9 @@ def get_font_for_language(target_language: str) -> str:
     Returns the appropriate font based on the target language.
     """
     cjk_fonts = {
-        'ja': 'HeiseiMin-W3',  # Japanese
-        'ko': 'HYSMyeongJo-Medium',  # Korean
-        'zh': 'STSong-Light',  # Chinese
+        'jp': 'HeiseiMin-W3',  # Japanese
+        'kr': 'HYSMyeongJo-Medium',  # Korean
+        'cn': 'STSong-Light',  # Chinese
     }
     
     # Return CJK font if language is CJK

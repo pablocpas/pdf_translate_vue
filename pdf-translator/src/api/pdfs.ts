@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { UploadResponse, TranslationTask } from '@/types';
 import apiClient from './client';
-import { ApiRequestError } from '@/types/api';
+import { ApiRequestError, ErrorCode } from '@/types/api';
 
 const uploadResponseSchema = z.object({
   taskId: z.string().min(1)
@@ -37,7 +37,10 @@ export async function uploadPdf(formData: FormData): Promise<UploadResponse> {
       throw new ApiRequestError(
         'Respuesta del servidor inválida',
         500,
-        { message: error.message }
+        { 
+          code: ErrorCode.VALIDATION_ERROR,
+          message: error.message 
+        }
       );
     }
     throw error;
@@ -62,7 +65,10 @@ export async function getTranslationStatus(taskId: string): Promise<TranslationT
       throw new ApiRequestError(
         'Respuesta del servidor inválida',
         500,
-        { message: error.message }
+        { 
+          code: ErrorCode.VALIDATION_ERROR,
+          message: error.message 
+        }
       );
     }
     throw error;
@@ -77,7 +83,11 @@ export async function downloadTranslatedPdf(taskId: string): Promise<Blob> {
   if (!(response.data instanceof Blob)) {
     throw new ApiRequestError(
       'Respuesta del servidor inválida: se esperaba un archivo PDF',
-      500
+      500,
+      {
+        code: ErrorCode.VALIDATION_ERROR,
+        message: 'La respuesta no es un archivo PDF válido'
+      }
     );
   }
   

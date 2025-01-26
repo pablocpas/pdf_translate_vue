@@ -22,10 +22,14 @@ RUN pip install --user --no-cache-dir -r requirements.txt
 RUN git clone https://github.com/facebookresearch/detectron2 detectron2_repo
 RUN pip install --user ./detectron2_repo
 
-# Download models
-RUN mkdir -p models && \
-    wget -O models/model_final.pth https://www.dropbox.com/s/h7th27jfv19rxiy/model_final.pth?dl=1 && \
-    wget -O models/config.yaml https://www.dropbox.com/s/yc92x97k50abynt/config.yaml?dl=1
+# Download models with new directory structure
+RUN mkdir -p models/primalayout && \
+    wget -O models/primalayout/model_final.pth https://www.dropbox.com/s/h7th27jfv19rxiy/model_final.pth?dl=1 && \
+    wget -O models/primalayout/config.yaml https://www.dropbox.com/s/yc92x97k50abynt/config.yaml?dl=1
+
+RUN mkdir -p models/publaynet && \
+    wget -O models/publaynet/model_final.pth https://huggingface.co/truefoundry/layout-parser/resolve/main/mask_rcnn_X_101_32x8d_FPN_3x.pth && \
+    wget -O models/publaynet/config.yaml https://huggingface.co/truefoundry/layout-parser/resolve/main/mask_rcnn_X_101_32x8d_FPN_3x.yml
 
 # Runtime stage
 FROM python:3.9-slim-buster
