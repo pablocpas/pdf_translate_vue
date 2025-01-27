@@ -12,7 +12,8 @@ from pathlib import Path
 from celery import Celery
 from celery.result import AsyncResult
 from fastapi.encoders import jsonable_encoder
-
+from pydantic import BaseModel
+from typing import List
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -55,8 +56,38 @@ class TranslationTask(BaseModel):
     translatedFile: Optional[str] = None
     translationDataFile: Optional[str] = None
 
+
+
+class Coordinates(BaseModel):
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+
+class Position(BaseModel):
+    x: float
+    y: float
+    width: float
+    height: float
+    coordinates: Coordinates
+
+class TextRegion(BaseModel):
+    id: int
+    original_text: str
+    translated_text: str
+    position: Position
+
+class PageDimensions(BaseModel):
+    width: float
+    height: float
+
+class PageData(BaseModel):
+    text_regions: List[TextRegion]
+    page_dimensions: PageDimensions
+
 class TranslationData(BaseModel):
-    pages: list = Field(..., description="Lista de páginas con sus datos de traducción")
+    pages: List[PageData]
+
 
 class UploadResponse(BaseModel):
     taskId: str
@@ -271,6 +302,10 @@ async def get_translation_data(task_id: str):
 async def update_translation_data(task_id: str, translation_data: TranslationData):
     celery_task = AsyncResult(task_id, app=celery_app)
     
+
+    logger.info(f"Updating translation data for task: {task_id}")
+
+    logger.info(f"LETS SEE THE DATA: {translation_data}")
     if celery_task.state != 'SUCCESS':
         raise HTTPException(status_code=400, detail="Translation is not complete")
     
@@ -283,7 +318,7 @@ async def update_translation_data(task_id: str, translation_data: TranslationDat
     try:
         # Save updated translation data
         with open(translation_data_path, 'w', encoding='utf-8') as f:
-            json.dump(translation_data.pages, f, ensure_ascii=False, indent=2)
+            json.dump(jsonable_encoder(translation_data), f, ensure_ascii=False, indent=2)
             
         # Trigger PDF regeneration with updated data
         # TODO: Implement PDF regeneration with updated translation data
@@ -294,4 +329,4 @@ async def update_translation_data(task_id: str, translation_data: TranslationDat
 
 @app.get("/")
 async def read_root():
-    return {"message": "PDF Translator API"}
+    return {"message": "PDF Translsfdfsdfator API"}

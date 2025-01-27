@@ -100,5 +100,8 @@ export async function getTranslationData(taskId: string): Promise<any> {
 }
 
 export async function updateTranslationData(taskId: string, data: TranslationData): Promise<void> {
+  // zod validation translationdata
+
+  
   await apiClient.put(`/pdfs/translation-data/${taskId}`, data);
 }

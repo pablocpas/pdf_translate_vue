@@ -109,7 +109,9 @@ async function loadTranslationData() {
   try {
     const data = await getTranslationData(currentTask.value.id);
     console.log('Received translation data:', data);
-    const formattedJson = JSON.stringify(data, null, 2);
+    // Ensure data is in the correct format
+    const translationData = Array.isArray(data) ? { pages: data } : data;
+    const formattedJson = JSON.stringify(translationData, null, 2);
     editorContent.value = formattedJson;
     editorRef.value.setValue(formattedJson);
     editorRef.value.getAction('editor.action.formatDocument').run();
@@ -126,8 +128,27 @@ async function saveChanges() {
   
   loading.value = true;
   try {
-    const data = JSON.parse(editorContent.value);
-    await updateTranslationData(currentTask.value.id, { pages: data });
+    const parsedData = JSON.parse(editorContent.value);
+    const pagesData = parsedData.pages || parsedData;
+    
+    // Sanitize text content to handle special characters
+    const sanitizedData = pagesData.map((page: any) => ({
+      ...page,
+      text_regions: page.text_regions.map((region: any) => ({
+        ...region,
+        original_text: region.original_text.replace(/'/g, ""),
+        translated_text: region.translated_text.replace(/'/g, "")
+      }))
+    }));
+
+    console.log('Saving translation data:', sanitizedData);
+
+    const translationData = {
+      pages: sanitizedData
+    };
+
+    console.log('Saving data:', translationData);
+    await updateTranslationData(currentTask.value.id, translationData);
     // Reload the PDF preview
     const iframe = document.querySelector('.pdf-viewer iframe') as HTMLIFrameElement;
     if (iframe) {
