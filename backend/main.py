@@ -6,6 +6,7 @@ from enum import Enum
 from typing import Optional
 import uuid
 import os
+import json
 import logging
 from pathlib import Path
 from celery import Celery
@@ -151,12 +152,13 @@ async def get_translation_status(task_id: str):
                     error="No output path returned from worker"
                 )
             else:
+                translation_data_path = result.get("translation_data_path")
                 response = TranslationTask(
                     id=task_id,
                     status=TaskStatus.completed,
                     originalFile=f"{task_id}.pdf",
                     translatedFile=translated_file,
-                    translationDataFile=result.get("translation_data_path")
+                    translationDataFile=translation_data_path if translation_data_path and Path(translation_data_path).exists() else None
                 )
     elif celery_task.state == 'FAILURE':
         response = TranslationTask(
@@ -193,23 +195,77 @@ async def download_translated_pdf(task_id: str):
 
 @app.get("/pdfs/translation-data/{task_id}")
 async def get_translation_data(task_id: str):
-    celery_task = AsyncResult(task_id, app=celery_app)
-    
-    if celery_task.state != 'SUCCESS':
-        raise HTTPException(status_code=400, detail="Translation is not complete")
-    
-    result = celery_task.result
-    translation_data_path = result.get("translation_data_path")
-    
-    if not translation_data_path or not Path(translation_data_path).exists():
-        raise HTTPException(status_code=404, detail="Translation data not found")
-    
     try:
-        with open(translation_data_path, 'r', encoding='utf-8') as f:
-            translation_data = json.load(f)
-        return JSONResponse(content=translation_data)
+        logger.info(f"Getting translation data for task: {task_id}")
+        celery_task = AsyncResult(task_id, app=celery_app)
+        
+        if celery_task.state != 'SUCCESS':
+            logger.warning(f"Task {task_id} is not complete. State: {celery_task.state}")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "message": "Translation is not complete",
+                    "code": "TRANSLATION_FAILED"
+                }
+            )
+        
+        result = celery_task.result
+        logger.info(f"Task result: {result}")
+        translation_data_path = result.get("translation_data_path")
+        logger.info(f"Translation data path: {translation_data_path}")
+        
+        if not translation_data_path:
+            logger.error(f"No translation data path found for task {task_id}")
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "message": "Translation data not found",
+                    "code": "VALIDATION_ERROR"
+                }
+            )
+        
+        if not Path(translation_data_path).exists():
+            logger.error(f"Translation data file not found at {translation_data_path}")
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "message": "Translation data file not found",
+                    "code": "VALIDATION_ERROR"
+                }
+            )
+        
+        try:
+            with open(translation_data_path, 'r', encoding='utf-8') as f:
+                translation_data = json.load(f)
+                logger.info(f"Successfully loaded translation data for task {task_id}")
+                return JSONResponse(content=translation_data)
+        except json.JSONDecodeError as e:
+            logger.error(f"Error decoding JSON for task {task_id}: {str(e)}")
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "message": f"Error decoding JSON: {str(e)}",
+                    "code": "VALIDATION_ERROR"
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error reading translation data for task {task_id}: {str(e)}")
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "message": f"Error reading translation data: {str(e)}",
+                    "code": "SERVER_ERROR"
+                }
+            )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error reading translation data: {str(e)}")
+        logger.error(f"Unexpected error in get_translation_data: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "message": "Error inesperado del servidor",
+                "code": "SERVER_ERROR"
+            }
+        )
 
 @app.put("/pdfs/translation-data/{task_id}")
 async def update_translation_data(task_id: str, translation_data: TranslationData):

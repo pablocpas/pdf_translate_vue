@@ -5,6 +5,10 @@
       <div class="editor-section">
         <h3 class="subtitle">Editor JSON</h3>
         <div class="monaco-wrapper">
+          <div v-if="loading" class="loading-overlay">
+            <div class="loading-spinner"></div>
+            <p>Cargando datos...</p>
+          </div>
           <vue-monaco-editor
             v-model:value="editorContent"
             language="json"
@@ -16,7 +20,7 @@
         <div class="editor-actions">
           <button 
             class="save-button"
-            :disabled="!isValidJson"
+            :disabled="!isValidJson || loading"
             @click="saveChanges"
           >
             Guardar Cambios
@@ -45,10 +49,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, shallowRef } from 'vue';
+import { ref, computed, watch, shallowRef } from 'vue';
 import { VueMonacoEditor } from '@guolao/vue-monaco-editor';
 import { useTranslationStore } from '@/stores/translationStore';
 import { getTranslationData, updateTranslationData } from '@/api/pdfs';
+import type { editor } from 'monaco-editor';
 
 const translationStore = useTranslationStore();
 const currentTask = computed(() => translationStore.currentTask);
@@ -56,8 +61,7 @@ const currentTask = computed(() => translationStore.currentTask);
 const editorContent = ref('');
 const isValidJson = ref(true);
 const editorRef = shallowRef();
-
-import type { editor } from 'monaco-editor';
+const loading = ref(true);
 
 const editorOptions: editor.IStandaloneEditorConstructionOptions = {
   automaticLayout: true,
@@ -92,21 +96,35 @@ const handleMount = (editor: editor.IStandaloneCodeEditor) => {
 };
 
 async function loadTranslationData() {
-  if (!currentTask.value?.id || !editorRef.value) return;
+  if (!currentTask.value?.id || !editorRef.value) {
+    console.log('Cannot load translation data:', {
+      taskId: currentTask.value?.id,
+      hasEditor: !!editorRef.value
+    });
+    return;
+  }
   
+  loading.value = true;
+  console.log('Loading translation data for task:', currentTask.value.id);
   try {
     const data = await getTranslationData(currentTask.value.id);
+    console.log('Received translation data:', data);
     const formattedJson = JSON.stringify(data, null, 2);
     editorContent.value = formattedJson;
     editorRef.value.setValue(formattedJson);
+    editorRef.value.getAction('editor.action.formatDocument').run();
+    console.log('Editor content set');
   } catch (error) {
     console.error('Error loading translation data:', error);
+  } finally {
+    loading.value = false;
   }
 }
 
 async function saveChanges() {
   if (!currentTask.value?.id || !isValidJson.value) return;
   
+  loading.value = true;
   try {
     const data = JSON.parse(editorContent.value);
     await updateTranslationData(currentTask.value.id, { pages: data });
@@ -117,9 +135,17 @@ async function saveChanges() {
     }
   } catch (error) {
     console.error('Error saving translation data:', error);
+  } finally {
+    loading.value = false;
   }
 }
 
+// Watch for changes in currentTask
+watch(() => currentTask.value?.id, (newId) => {
+  if (newId && editorRef.value) {
+    loadTranslationData();
+  }
+});
 </script>
 
 <style scoped>
@@ -156,6 +182,38 @@ async function saveChanges() {
   border: 2px solid #e9ecef;
   background: #1e1e1e;
   height: calc(100% - 100px);
+  position: relative;
+}
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  color: white;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .pdf-viewer {

@@ -58,9 +58,11 @@ def translate_pdf(task_id: str = None, pdf_path: str = None, target_language: st
             }
             
         logger.info(f"PDF translation completed successfully")
+        logger.info(f"Result from process_pdf: {result}")
         return {
             "status": "completed",
-            "output_path": output_pdf_path
+            "output_path": output_pdf_path,
+            "translation_data_path": result.get("translation_data_path")
         }
     except Exception as e:
         logger.error(f"Unexpected error in translation task: {str(e)}")

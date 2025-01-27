@@ -102,14 +102,20 @@ def process_pdf(pdf_path, output_pdf_path, target_language, progress_callback=No
         logger.info(f"Translated PDF saved as {output_pdf_path}")
         # Save translation data to JSON file
         translation_data_path = output_pdf_path.replace('.pdf', '_translation_data.json')
+        logger.info(f"Saving translation data to: {translation_data_path}")
+        logger.info(f"Translation data content: {json.dumps(all_translation_data, indent=2)}")
+        
         with open(translation_data_path, 'w', encoding='utf-8') as f:
             json.dump(all_translation_data, f, ensure_ascii=False, indent=2)
-            
-        return {
+        
+        logger.info("Translation data saved successfully")
+        result = {
             "success": True, 
             "output_path": output_pdf_path,
             "translation_data_path": translation_data_path
         }
+        logger.info(f"Returning result: {result}")
+        return result
     except Exception as e:
         logger.error(f"Error processing PDF: {e}")
         return {"error": str(e)}
