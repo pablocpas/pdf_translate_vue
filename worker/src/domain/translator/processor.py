@@ -1,5 +1,6 @@
 import logging
 import io
+import json
 from typing import List, Tuple, Callable, Dict, Any
 from pdf2image import convert_from_path
 from reportlab.lib.pagesizes import A4
@@ -51,6 +52,8 @@ from ...infrastructure.config.settings import MARGIN, DEBUG_MODE
 logger = logging.getLogger(__name__)
 
 def process_pdf(pdf_path, output_pdf_path, target_language, progress_callback=None, model_type="primalayout"):
+    # Store translation data for all pages
+    all_translation_data = []
     try:
         # Escoge un DPI adecuado (por ejemplo, 300)
         pages = convert_from_path(pdf_path, dpi=300)
@@ -76,8 +79,8 @@ def process_pdf(pdf_path, output_pdf_path, target_language, progress_callback=No
             # Establecemos el tamaño de página actual
             pdf_canvas.setPageSize((page_width_pts, page_height_pts))
 
-            # Llamamos a la función que dibuja texto e imágenes
-            process_page(
+            # Llamamos a la función que dibuja texto e imágenes y guardamos los datos de traducción
+            page_translation_data = process_page(
                 page_image,
                 pdf_canvas,
                 page_width_pts,
@@ -86,6 +89,7 @@ def process_pdf(pdf_path, output_pdf_path, target_language, progress_callback=No
                 target_language,
                 model_type
             )
+            all_translation_data.append(page_translation_data)
 
             if progress_callback:
                 progress_callback(page_num + 1, total_pages)
@@ -96,12 +100,21 @@ def process_pdf(pdf_path, output_pdf_path, target_language, progress_callback=No
         # Cerramos el documento final
         pdf_canvas.save()
         logger.info(f"Translated PDF saved as {output_pdf_path}")
-        return {"success": True, "output_path": output_pdf_path}
+        # Save translation data to JSON file
+        translation_data_path = output_pdf_path.replace('.pdf', '_translation_data.json')
+        with open(translation_data_path, 'w', encoding='utf-8') as f:
+            json.dump(all_translation_data, f, ensure_ascii=False, indent=2)
+            
+        return {
+            "success": True, 
+            "output_path": output_pdf_path,
+            "translation_data_path": translation_data_path
+        }
     except Exception as e:
         logger.error(f"Error processing PDF: {e}")
         return {"error": str(e)}
 
-def process_page(page_image: Image.Image, pdf_canvas: canvas.Canvas, page_width: float, page_height: float, base_style: ParagraphStyle, target_language: str, model_type: str) -> None:
+def process_page(page_image: Image.Image, pdf_canvas: canvas.Canvas, page_width: float, page_height: float, base_style: ParagraphStyle, target_language: str, model_type: str) -> dict:
     """
     Process a single page of the PDF.
 
@@ -116,11 +129,19 @@ def process_page(page_image: Image.Image, pdf_canvas: canvas.Canvas, page_width:
     layout = get_layout(page_image, model_type)
     text_regions, image_regions = merge_overlapping_text_regions(layout)
 
-    process_text_regions(text_regions, page_image, pdf_canvas, page_width, page_height, base_style, target_language)
+    translation_data = process_text_regions(text_regions, page_image, pdf_canvas, page_width, page_height, base_style, target_language)
     process_image_regions(image_regions, page_image, pdf_canvas, page_width, page_height)
     
+    return {
+        "text_regions": translation_data,
+        "page_dimensions": {
+            "width": page_width,
+            "height": page_height
+        }
+    }
+    
 
-def process_text_regions(text_regions: List[Tuple[Any, Any]], page_image: Image.Image, pdf_canvas: canvas.Canvas, page_width: float, page_height: float, base_style: ParagraphStyle, target_language: str) -> None:
+def process_text_regions(text_regions: List[Tuple[Any, Any]], page_image: Image.Image, pdf_canvas: canvas.Canvas, page_width: float, page_height: float, base_style: ParagraphStyle, target_language: str) -> List[dict]:
     # Set the appropriate font for the target language
     font_name = get_font_for_language(target_language)
     """
@@ -165,8 +186,29 @@ def process_text_regions(text_regions: List[Tuple[Any, Any]], page_image: Image.
     print(target_language)
     translated_texts = translate_text(texts_to_translate, target_language)
 
+    # Preparar datos de traducción
+    translation_data = []
+    
     # Procesar textos traducidos
-    for translated_text, (frame_x, frame_y, frame_width, frame_height, _) in zip(translated_texts, regions_data):
+    for i, (translated_text, (frame_x, frame_y, frame_width, frame_height, rect)) in enumerate(zip(translated_texts, regions_data)):
+        # Guardar datos de traducción
+        translation_data.append({
+            "id": i,
+            "original_text": texts_to_translate[i],
+            "translated_text": translated_text,
+            "position": {
+                "x": frame_x,
+                "y": frame_y,
+                "width": frame_width,
+                "height": frame_height,
+                "coordinates": {
+                    "x1": rect.coordinates[0],
+                    "y1": rect.coordinates[1],
+                    "x2": rect.coordinates[2],
+                    "y2": rect.coordinates[3]
+                }
+            }
+        })
         min_font_size = 8
         font_scale_factor = 0.8
         initial_font_size = max(min_font_size, frame_height * font_scale_factor)
@@ -184,6 +226,8 @@ def process_text_regions(text_regions: List[Tuple[Any, Any]], page_image: Image.
         )
         paragraph.wrapOn(pdf_canvas, frame_width, frame_height)
         paragraph.drawOn(pdf_canvas, frame_x, frame_y)
+        
+    return translation_data
 
 def process_image_regions(image_regions: List[Tuple[Any, Any]], page_image: Image.Image, pdf_canvas: canvas.Canvas, page_width: float, page_height: float) -> None:
     """

@@ -1,7 +1,7 @@
-from fastapi import FastAPI, UploadFile, HTTPException, Form, File
+from fastapi import FastAPI, UploadFile, HTTPException, Form, File, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
 from enum import Enum
 from typing import Optional
 import uuid
@@ -52,6 +52,10 @@ class TranslationTask(BaseModel):
     error: Optional[str] = None
     originalFile: str
     translatedFile: Optional[str] = None
+    translationDataFile: Optional[str] = None
+
+class TranslationData(BaseModel):
+    pages: list = Field(..., description="Lista de páginas con sus datos de traducción")
 
 class UploadResponse(BaseModel):
     taskId: str
@@ -151,7 +155,8 @@ async def get_translation_status(task_id: str):
                     id=task_id,
                     status=TaskStatus.completed,
                     originalFile=f"{task_id}.pdf",
-                    translatedFile=translated_file
+                    translatedFile=translated_file,
+                    translationDataFile=result.get("translation_data_path")
                 )
     elif celery_task.state == 'FAILURE':
         response = TranslationTask(
@@ -185,6 +190,51 @@ async def download_translated_pdf(task_id: str):
         raise HTTPException(status_code=404, detail="Translated file not found")
 
     return FileResponse(translated_file, media_type="application/pdf")
+
+@app.get("/pdfs/translation-data/{task_id}")
+async def get_translation_data(task_id: str):
+    celery_task = AsyncResult(task_id, app=celery_app)
+    
+    if celery_task.state != 'SUCCESS':
+        raise HTTPException(status_code=400, detail="Translation is not complete")
+    
+    result = celery_task.result
+    translation_data_path = result.get("translation_data_path")
+    
+    if not translation_data_path or not Path(translation_data_path).exists():
+        raise HTTPException(status_code=404, detail="Translation data not found")
+    
+    try:
+        with open(translation_data_path, 'r', encoding='utf-8') as f:
+            translation_data = json.load(f)
+        return JSONResponse(content=translation_data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading translation data: {str(e)}")
+
+@app.put("/pdfs/translation-data/{task_id}")
+async def update_translation_data(task_id: str, translation_data: TranslationData):
+    celery_task = AsyncResult(task_id, app=celery_app)
+    
+    if celery_task.state != 'SUCCESS':
+        raise HTTPException(status_code=400, detail="Translation is not complete")
+    
+    result = celery_task.result
+    translation_data_path = result.get("translation_data_path")
+    
+    if not translation_data_path or not Path(translation_data_path).exists():
+        raise HTTPException(status_code=404, detail="Translation data not found")
+    
+    try:
+        # Save updated translation data
+        with open(translation_data_path, 'w', encoding='utf-8') as f:
+            json.dump(translation_data.pages, f, ensure_ascii=False, indent=2)
+            
+        # Trigger PDF regeneration with updated data
+        # TODO: Implement PDF regeneration with updated translation data
+        
+        return {"message": "Translation data updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating translation data: {str(e)}")
 
 @app.get("/")
 async def read_root():

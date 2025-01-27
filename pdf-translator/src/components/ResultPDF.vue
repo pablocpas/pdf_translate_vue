@@ -1,5 +1,12 @@
 <template>
   <div class="result-container">
+    <div v-if="showEditor" class="editor-view">
+      <TranslationEditor />
+      <button class="back-button" @click="showEditor = false">
+        Volver a la Vista PDF
+      </button>
+    </div>
+    <div v-else class="result-view">
     <div class="result-card">
       <h2 class="title">Resultado de la traducción</h2>
 
@@ -43,13 +50,21 @@
               title="PDF Traducido"
             ></iframe>
           </div>
-          <a
-            :href="translatedPdfUrl"
-            download
-            class="download-button download-button-primary"
-          >
-            Descargar Traducción
-          </a>
+          <div class="pdf-actions">
+            <a
+              :href="translatedPdfUrl"
+              download
+              class="download-button download-button-primary"
+            >
+              Descargar Traducción
+            </a>
+            <button
+              class="edit-button"
+              @click="showEditor = true"
+            >
+              Editar Traducción
+            </button>
+          </div>
         </div>
       </div>
 
@@ -60,16 +75,19 @@
         Traducir otro PDF
       </button>
     </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import TranslationEditor from './TranslationEditor.vue';
 import { useRouter } from 'vue-router';
 import { useTranslationStore } from '@/stores/translationStore';
 import { getTranslationStatus } from '@/api/pdfs';
 
 const router = useRouter();
+const showEditor = ref(false);
 const translationStore = useTranslationStore();
 const currentTask = computed(() => translationStore.currentTask);
 const checkInterval = ref<number>();
@@ -315,6 +333,58 @@ onUnmounted(() => {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
+}
+
+.pdf-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.edit-button {
+  display: block;
+  width: 100%;
+  padding: 0.875rem;
+  background: white;
+  color: #228be6;
+  border: 2px solid #228be6;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  text-align: center;
+}
+
+.edit-button:hover {
+  background: rgba(34, 139, 230, 0.1);
+  transform: translateY(-1px);
+}
+
+.back-button {
+  display: block;
+  width: 100%;
+  padding: 0.875rem;
+  margin-top: 1rem;
+  background: #f8f9fa;
+  color: #1a1b1e;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.back-button:hover {
+  background: #e9ecef;
+  transform: translateY(-1px);
+}
+
+.editor-view {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.result-view {
+  animation: fadeIn 0.3s ease-out;
 }
 
 @keyframes fadeIn {

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { UploadResponse, TranslationTask } from '@/types';
+import type { UploadResponse, TranslationTask, TranslationData } from '@/types';
 import apiClient from './client';
 import { ApiRequestError, ErrorCode } from '@/types/api';
 
@@ -92,4 +92,13 @@ export async function downloadTranslatedPdf(taskId: string): Promise<Blob> {
   }
   
   return response.data;
+}
+
+export async function getTranslationData(taskId: string): Promise<any> {
+  const response = await apiClient.get(`/pdfs/translation-data/${taskId}`);
+  return response.data;
+}
+
+export async function updateTranslationData(taskId: string, data: TranslationData): Promise<void> {
+  await apiClient.put(`/pdfs/translation-data/${taskId}`, data);
 }

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
+    "@guolao/vue-monaco-editor": "^1.5.4",
     "@mantine/core": "^7.16.0",
     "@mantine/hooks": "^7.16.0",
     "@mantine/notifications": "^7.16.0",
@@ -19,11 +20,14 @@
     "axios": "^1.7.9",
     "pinia": "^2.3.0",
     "vue": "^3.5.13",
+    "vue-monaco-editor": "^0.0.19",
     "vue-router": "^4.5.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",
+    "@types/vue": "^1.0.31",
+    "@types/vue-router": "^2.0.0",
     "@vitejs/plugin-vue": "^5.2.1",
     "@vue/tsconfig": "^0.7.0",
     "sass": "^1.83.4",
