@@ -41,9 +41,14 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
+# Create non-root user and required directories
 RUN useradd --create-home appuser
 WORKDIR /app
+
+# Create required directories with correct permissions
+RUN mkdir -p /app/uploads /app/translated && \
+    chown -R appuser:appuser /app/uploads /app/translated
+
 USER appuser
 
 # Copy installed packages and models
