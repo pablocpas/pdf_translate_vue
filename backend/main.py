@@ -305,7 +305,8 @@ async def update_translation_data(task_id: str, translation_data: TranslationDat
 
     logger.info(f"Updating translation data for task: {task_id}")
 
-    logger.info(f"LETS SEE THE DATA: {translation_data}")
+    logger.info(f"Received data type: {type(translation_data)}")
+    logger.info(f"Received data: {translation_data.dict()}")
     if celery_task.state != 'SUCCESS':
         raise HTTPException(status_code=400, detail="Translation is not complete")
     

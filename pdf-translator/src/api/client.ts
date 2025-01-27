@@ -27,7 +27,10 @@ const apiClient = axios.create({
         headers['Content-Type'] = 'multipart/form-data';
         return data;
       }
-      return JSON.stringify(data);
+      if (headers['Content-Type'] === 'application/json') {
+        return JSON.stringify(data);
+      }
+      return data;
     }
   ],
 });
