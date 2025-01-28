@@ -19,8 +19,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - UPLOAD_FOLDER=/app/uploads
-      - TRANSLATED_FOLDER=/app/translated
+      - UPLOAD_FOLDER=/storage/uploads
+      - TRANSLATED_FOLDER=/storage/translated
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
@@ -34,7 +34,7 @@ services:
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - TRANSLATED_FOLDER=/app/translated
+      - TRANSLATED_FOLDER=/storage/translated
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       - redis

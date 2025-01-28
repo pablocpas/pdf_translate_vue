@@ -1,3 +1,29 @@
-[build]
-builder = "DOCKERFILE"
-dockerfilePath = "docker-compose.yml"
+[[services]]
+name = "frontend"
+dockerfile = "pdf-translator/Dockerfile"
+ports = ["80"]
+
+[[services]]
+name = "backend"
+dockerfile = "backend/Dockerfile"
+ports = ["8000"]
+envs = [
+  "UPLOAD_FOLDER=/storage/uploads",
+  "TRANSLATED_FOLDER=/storage/translated",
+  "CELERY_BROKER_URL=redis://redis:6379/0",
+  "CELERY_RESULT_BACKEND=redis://redis:6379/0"
+]
+
+[[services]]
+name = "worker"
+dockerfile = "worker/Dockerfile"
+envs = [
+  "CELERY_BROKER_URL=redis://redis:6379/0",
+  "CELERY_RESULT_BACKEND=redis://redis:6379/0",
+  "TRANSLATED_FOLDER=/storage/translated"
+]
+
+[[services]]
+name = "redis"
+image = "redis:alpine"
+ports = ["6379"]
