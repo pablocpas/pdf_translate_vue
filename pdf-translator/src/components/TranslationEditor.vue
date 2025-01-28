@@ -12,6 +12,7 @@
           <vue-monaco-editor
             v-model:value="editorContent"
             language="json"
+            wordWrap="on"
             theme="vs-dark"
             :options="editorOptions"
             @mount="handleMount"
@@ -67,9 +68,10 @@ const editorOptions: editor.IStandaloneEditorConstructionOptions = {
   automaticLayout: true,
   formatOnType: true,
   formatOnPaste: true,
+  wordWrap: 'on',
   minimap: { enabled: false },
   fontSize: 14,
-  lineNumbers: 'on' as const,
+  lineNumbers: 'off' as const,
   roundedSelection: false,
   scrollBeyondLastLine: false
 };

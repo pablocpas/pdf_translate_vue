@@ -102,11 +102,37 @@ def process_pdf(pdf_path, output_pdf_path, target_language, progress_callback=No
         logger.info(f"Translated PDF saved as {output_pdf_path}")
         # Save translation data to JSON file
         translation_data_path = output_pdf_path.replace('.pdf', '_translation_data.json')
+        position_data_path = output_pdf_path.replace('.pdf', '_translation_data_position.json')
+
         logger.info(f"Saving translation data to: {translation_data_path}")
         logger.info(f"Translation data content: {json.dumps(all_translation_data, indent=2)}")
         
-        with open(translation_data_path, 'w', encoding='utf-8') as f:
-            json.dump(all_translation_data, f, ensure_ascii=False, indent=2)
+        with open(translation_data_path, 'w') as f:
+            json.dump([
+                {"id": r["id"], 
+                "original_text": r["original_text"], 
+                "translated_text": r["translated_text"]}
+                for page in all_translation_data 
+                for r in page["text_regions"]
+            ], f, ensure_ascii=False, indent=2)
+
+        # Guardar posiciones
+        with open(position_data_path, 'w') as f:
+            json.dump([
+                {
+                    "page_number": idx,
+                    "dimensions": page["page_dimensions"],
+                    "regions": [
+                        {
+                            "id": r["id"],
+                            "position": r["position"],
+                            "coordinates": r["position"]["coordinates"]
+                        }
+                        for r in page["text_regions"]
+                    ]
+                }
+                for idx, page in enumerate(all_translation_data)
+            ], f, ensure_ascii=False, indent=2)
         
         logger.info("Translation data saved successfully")
         result = {
