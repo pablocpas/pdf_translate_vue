@@ -110,9 +110,9 @@ async function loadTranslationData() {
   try {
     const data = await getTranslationData(currentTask.value.id);
     console.log('Received translation data:', data);
-    // Ensure data is in the correct format
-    const translationData = Array.isArray(data) ? { pages: data } : data;
-    const formattedJson = JSON.stringify(translationData, null, 2);
+    
+    // Data should already be in the correct format with translations and positions
+    const formattedJson = JSON.stringify(data, null, 2);
     editorContent.value = formattedJson;
     editorRef.value.setValue(formattedJson);
     editorRef.value.getAction('editor.action.formatDocument').run();
@@ -129,23 +129,18 @@ async function saveChanges() {
   
   loading.value = true;
   try {
-    const parsedData = JSON.parse(editorContent.value);
-    const pagesData = parsedData.pages || parsedData;
+    const data = JSON.parse(editorContent.value);
     
     // Sanitize text content to handle special characters
-    const sanitizedData = pagesData.map((page: any) => ({
-      ...page,
-      text_regions: page.text_regions.map((region: any) => ({
-        ...region,
-        original_text: region.original_text.replace(/'/g, ""),
-        translated_text: region.translated_text.replace(/'/g, "")
-      }))
+    const sanitizedTranslations = data.translations.map((translation: any) => ({
+      ...translation,
+      original_text: translation.original_text.replace(/'/g, ""),
+      translated_text: translation.translated_text.replace(/'/g, "")
     }));
 
-    console.log('Saving translation data:', sanitizedData);
-
     const translationData = {
-      pages: sanitizedData
+      translations: sanitizedTranslations,
+      positions: data.positions
     };
 
     console.log('Saving data:', translationData);

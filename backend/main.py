@@ -58,6 +58,11 @@ class TranslationTask(BaseModel):
 
 
 
+class TranslationText(BaseModel):
+    id: int
+    original_text: str
+    translated_text: str
+
 class Coordinates(BaseModel):
     x1: float
     y1: float
@@ -71,22 +76,22 @@ class Position(BaseModel):
     height: float
     coordinates: Coordinates
 
-class TextRegion(BaseModel):
+class TranslationPosition(BaseModel):
     id: int
-    original_text: str
-    translated_text: str
     position: Position
 
 class PageDimensions(BaseModel):
     width: float
     height: float
 
-class PageData(BaseModel):
-    text_regions: List[TextRegion]
-    page_dimensions: PageDimensions
+class PagePositionData(BaseModel):
+    page_number: int
+    dimensions: PageDimensions
+    regions: List[TranslationPosition]
 
 class TranslationData(BaseModel):
-    pages: List[PageData]
+    translations: List[TranslationText]
+    positions: List[PagePositionData]
 
 
 class UploadResponse(BaseModel):
@@ -243,10 +248,12 @@ async def get_translation_data(task_id: str):
         result = celery_task.result
         logger.info(f"Task result: {result}")
         translation_data_path = result.get("translation_data_path")
+        position_data_path = translation_data_path.replace('_translation_data.json', '_translation_data_position.json')
         logger.info(f"Translation data path: {translation_data_path}")
+        logger.info(f"Position data path: {position_data_path}")
         
-        if not translation_data_path:
-            logger.error(f"No translation data path found for task {task_id}")
+        if not translation_data_path or not Path(translation_data_path).exists():
+            logger.error(f"Translation data file not found at {translation_data_path}")
             return JSONResponse(
                 status_code=404,
                 content={
@@ -255,21 +262,29 @@ async def get_translation_data(task_id: str):
                 }
             )
         
-        if not Path(translation_data_path).exists():
-            logger.error(f"Translation data file not found at {translation_data_path}")
+        if not Path(position_data_path).exists():
+            logger.error(f"Position data file not found at {position_data_path}")
             return JSONResponse(
                 status_code=404,
                 content={
-                    "message": "Translation data file not found",
+                    "message": "Position data not found",
                     "code": "VALIDATION_ERROR"
                 }
             )
         
         try:
             with open(translation_data_path, 'r', encoding='utf-8') as f:
-                translation_data = json.load(f)
-                logger.info(f"Successfully loaded translation data for task {task_id}")
-                return JSONResponse(content=translation_data)
+                translations = json.load(f)
+            with open(position_data_path, 'r', encoding='utf-8') as f:
+                positions = json.load(f)
+                
+            combined_data = {
+                "translations": translations,
+                "positions": positions
+            }
+            
+            logger.info(f"Successfully loaded translation data for task {task_id}")
+            return JSONResponse(content=combined_data)
         except json.JSONDecodeError as e:
             logger.error(f"Error decoding JSON for task {task_id}: {str(e)}")
             return JSONResponse(
@@ -302,24 +317,28 @@ async def get_translation_data(task_id: str):
 async def update_translation_data(task_id: str, translation_data: TranslationData):
     celery_task = AsyncResult(task_id, app=celery_app)
     
-
     logger.info(f"Updating translation data for task: {task_id}")
-
     logger.info(f"Received data type: {type(translation_data)}")
     logger.info(f"Received data: {translation_data.dict()}")
+    
     if celery_task.state != 'SUCCESS':
         raise HTTPException(status_code=400, detail="Translation is not complete")
     
     result = celery_task.result
     translation_data_path = result.get("translation_data_path")
+    position_data_path = translation_data_path.replace('_translation_data.json', '_translation_data_position.json')
     
     if not translation_data_path or not Path(translation_data_path).exists():
         raise HTTPException(status_code=404, detail="Translation data not found")
     
     try:
-        # Save updated translation data
+        # Save translations
         with open(translation_data_path, 'w', encoding='utf-8') as f:
-            json.dump(jsonable_encoder(translation_data), f, ensure_ascii=False, indent=2)
+            json.dump(jsonable_encoder(translation_data.translations), f, ensure_ascii=False, indent=2)
+            
+        # Save positions
+        with open(position_data_path, 'w', encoding='utf-8') as f:
+            json.dump(jsonable_encoder(translation_data.positions), f, ensure_ascii=False, indent=2)
             
         # Trigger PDF regeneration with updated data
         # TODO: Implement PDF regeneration with updated translation data

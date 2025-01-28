@@ -94,15 +94,89 @@ export async function downloadTranslatedPdf(taskId: string): Promise<Blob> {
   return response.data;
 }
 
-export async function getTranslationData(taskId: string): Promise<any> {
-  const response = await apiClient.get(`/pdfs/translation-data/${taskId}`);
-  return response.data;
+const coordinatesSchema = z.object({
+  x1: z.number(),
+  y1: z.number(),
+  x2: z.number(),
+  y2: z.number()
+});
+
+const positionSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  width: z.number(),
+  height: z.number(),
+  coordinates: coordinatesSchema
+});
+
+const translationTextSchema = z.object({
+  id: z.number(),
+  original_text: z.string(),
+  translated_text: z.string()
+});
+
+const translationPositionSchema = z.object({
+  id: z.number(),
+  position: positionSchema
+});
+
+const pageDimensionsSchema = z.object({
+  width: z.number(),
+  height: z.number()
+});
+
+const pagePositionDataSchema = z.object({
+  page_number: z.number(),
+  dimensions: pageDimensionsSchema,
+  regions: z.array(translationPositionSchema)
+});
+
+const translationDataSchema = z.object({
+  translations: z.array(translationTextSchema),
+  positions: z.array(pagePositionDataSchema)
+});
+
+export async function getTranslationData(taskId: string): Promise<TranslationData> {
+  try {
+    const response = await apiClient.get(`/pdfs/translation-data/${taskId}`);
+    const validatedData = translationDataSchema.parse(response.data);
+    return validatedData;
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      throw new ApiRequestError(
+        'Respuesta del servidor inválida',
+        500,
+        { 
+          code: ErrorCode.VALIDATION_ERROR,
+          message: error.message 
+        }
+      );
+    }
+    throw error;
+  }
 }
 
 export async function updateTranslationData(taskId: string, data: TranslationData): Promise<void> {
-  await apiClient.put(`/pdfs/translation-data/${taskId}`, data, {
-    headers: {
-      'Content-Type': 'application/json'
+  try {
+    // Validate data before sending
+    translationDataSchema.parse(data);
+    
+    await apiClient.put(`/pdfs/translation-data/${taskId}`, data, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      throw new ApiRequestError(
+        'Datos de traducción inválidos',
+        400,
+        { 
+          code: ErrorCode.VALIDATION_ERROR,
+          message: error.message 
+        }
+      );
     }
-  });
+    throw error;
+  }
 }
