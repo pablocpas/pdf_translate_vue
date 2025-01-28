@@ -108,12 +108,15 @@ async function loadTranslationData() {
   loading.value = true;
   try {
     const data = await getTranslationData(currentTask.value.id);
-    // Only show translations to the user
+    // Format data with pages structure
     const formattedJson = JSON.stringify({
-      translations: data.translations.map(t => ({
-        id: t.id,
-        original_text: t.original_text,
-        translated_text: t.translated_text
+      pages: data.pages.map(page => ({
+        page_number: page.page_number,
+        translations: page.translations.map(t => ({
+          id: t.id,
+          original_text: t.original_text,
+          translated_text: t.translated_text
+        }))
       }))
     }, null, 2);
     editorContent.value = formattedJson;
@@ -135,14 +138,17 @@ async function saveChanges() {
     const data = JSON.parse(editorContent.value);
     
     // Sanitize text content to handle special characters
-    const sanitizedTranslations = data.translations.map((translation: any) => ({
-      id: translation.id,
-      original_text: translation.original_text.replace(/'/g, ""),
-      translated_text: translation.translated_text.replace(/'/g, "")
+    const sanitizedPages = data.pages.map((page: any) => ({
+      page_number: page.page_number,
+      translations: page.translations.map((translation: any) => ({
+        id: translation.id,
+        original_text: translation.original_text.replace(/'/g, ""),
+        translated_text: translation.translated_text.replace(/'/g, "")
+      }))
     }));
 
     const translationData = {
-      translations: sanitizedTranslations
+      pages: sanitizedPages
     };
 
     console.log('Saving translations:', translationData);

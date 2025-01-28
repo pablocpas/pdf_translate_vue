@@ -109,15 +109,24 @@ def process_pdf(pdf_path, output_pdf_path, target_language, progress_callback=No
         logger.info(f"Saving translation data to: {translation_data_path}")
         logger.info(f"Translation data content: {json.dumps(all_translation_data, indent=2)}")
         
-        # Save translations
+        # Organize translations by page
+        translations_by_page = []
+        for page_idx, page_data in enumerate(all_translation_data):
+            translations_by_page.append({
+                "page_number": page_idx,
+                "translations": [
+                    {
+                        "id": r["id"],
+                        "original_text": r["original_text"],
+                        "translated_text": r["translated_text"]
+                    }
+                    for r in page_data["text_regions"]
+                ]
+            })
+            
+        # Save translations with page structure
         with open(translation_data_path, 'w') as f:
-            json.dump([
-                {"id": r["id"], 
-                "original_text": r["original_text"], 
-                "translated_text": r["translated_text"]}
-                for page in all_translation_data 
-                for r in page["text_regions"]
-            ], f, ensure_ascii=False, indent=2)
+            json.dump({"pages": translations_by_page}, f, ensure_ascii=False, indent=2)
 
         # Save positions and image regions
         page_image_data = []
@@ -306,7 +315,7 @@ def process_text_regions(text_regions: List[Tuple[Any, Any]], page_image: Image.
         
     return translation_data
 
-def regenerate_pdf(output_pdf_path: str, translation_data: List[dict], position_data: dict, target_language: str) -> dict:
+def regenerate_pdf(output_pdf_path: str, translation_data: dict, position_data: dict, target_language: str) -> dict:
     """
     Regenerate PDF using existing translation and position data.
     
@@ -323,8 +332,24 @@ def regenerate_pdf(output_pdf_path: str, translation_data: List[dict], position_
         base_style = styles["Normal"]
         font_name = get_font_for_language(target_language)
         
-        # Create translation lookup
-        translation_lookup = {t["id"]: t for t in translation_data}
+        # Create translation lookup by page number and id
+        translation_lookup = {}
+        if isinstance(translation_data, dict) and "pages" in translation_data:
+            logger.info("Processing translation data in page-based format")
+            for page in translation_data["pages"]:
+                page_num = page["page_number"]
+                if page_num not in translation_lookup:
+                    translation_lookup[page_num] = {}
+                for translation in page["translations"]:
+                    translation_lookup[page_num][translation["id"]] = translation
+                logger.info(f"Added {len(page['translations'])} translations for page {page_num}")
+        else:
+            # Handle legacy format (flat list) - put all in page 0
+            logger.info("Processing translation data in legacy format")
+            translation_lookup[0] = {}
+            for translation in translation_data:
+                translation_lookup[0][translation["id"]] = translation
+            logger.info(f"Added {len(translation_data)} translations to page 0")
         
         # Get images directory path
         images_dir = output_pdf_path.replace('.pdf', '_images')
@@ -358,8 +383,11 @@ def regenerate_pdf(output_pdf_path: str, translation_data: List[dict], position_
             
             # Draw text regions
             for region in page_data["regions"]:
-                translation = translation_lookup.get(region["id"])
+                current_page = page_data["page_number"]
+                page_translations = translation_lookup.get(current_page, {})
+                translation = page_translations.get(region["id"])
                 if translation:
+                    logger.info(f"Found translation for page {current_page}, region {region['id']}")
                     pos = region["position"]
                     
                     # Create paragraph style

@@ -63,6 +63,13 @@ class TranslationText(BaseModel):
     original_text: str
     translated_text: str
 
+class PageTranslation(BaseModel):
+    page_number: int
+    translations: List[TranslationText]
+
+class TranslationData(BaseModel):
+    pages: List[PageTranslation]
+
 class Coordinates(BaseModel):
     x1: float
     y1: float
@@ -88,9 +95,6 @@ class PagePositionData(BaseModel):
     page_number: int
     dimensions: PageDimensions
     regions: List[TranslationPosition]
-
-class TranslationData(BaseModel):
-    translations: List[TranslationText]
 
 
 class UploadResponse(BaseModel):
@@ -274,11 +278,48 @@ async def get_translation_data(task_id: str):
         try:
             with open(translation_data_path, 'r', encoding='utf-8') as f:
                 translations = json.load(f)
+                logger.info(f"Loaded translations: {json.dumps(translations, indent=2)}")
             with open(position_data_path, 'r', encoding='utf-8') as f:
                 positions = json.load(f)
+                logger.info(f"Loaded positions: {json.dumps(positions, indent=2)}")
                 
+            # Check if translations is already in page-based format
+            if isinstance(translations, dict) and "pages" in translations:
+                logger.info("Translations already in page-based format")
+                pages = translations["pages"]
+            else:
+                logger.info("Converting translations to page-based format")
+                # Organize translations by page
+                translations_by_page = {}
+                for translation in translations:
+                    # Get page number from positions data
+                    translation_id = translation['id']
+                    page_number = None
+                    if 'pages' in positions:
+                        for page_data in positions['pages']:
+                            for region in page_data['regions']:
+                                if region['id'] == translation_id:
+                                    page_number = page_data['page_number']
+                                    break
+                            if page_number is not None:
+                                break
+                    
+                    if page_number is not None:
+                        if page_number not in translations_by_page:
+                            translations_by_page[page_number] = []
+                        translations_by_page[page_number].append(translation)
+                
+                # Convert to list of pages with translations
+                pages = [
+                    {
+                        "page_number": page_num,
+                        "translations": page_translations
+                    }
+                    for page_num, page_translations in sorted(translations_by_page.items())
+                ]
+            
             combined_data = {
-                "translations": translations,
+                "pages": pages,
                 "positions": positions
             }
             
@@ -331,9 +372,9 @@ async def update_translation_data(task_id: str, translation_data: TranslationDat
         raise HTTPException(status_code=404, detail="Translation data not found")
     
     try:
-        # Save translations
+        # Save translations with page structure
         with open(translation_data_path, 'w', encoding='utf-8') as f:
-            json.dump(jsonable_encoder(translation_data.translations), f, ensure_ascii=False, indent=2)
+            json.dump({"pages": jsonable_encoder(translation_data.pages)}, f, ensure_ascii=False, indent=2)
             
         # Load existing position data
         with open(position_data_path, 'r', encoding='utf-8') as f:
@@ -344,7 +385,7 @@ async def update_translation_data(task_id: str, translation_data: TranslationDat
             'regenerate_pdf',
             kwargs={
                 'task_id': task_id,
-                'translation_data': jsonable_encoder(translation_data.translations),
+                'translation_data': {"pages": jsonable_encoder(translation_data.pages)},
                 'position_data': position_data
             }
         )
@@ -380,6 +421,10 @@ async def regenerate_pdf_endpoint(task_id: str):
         # Load translation and position data
         with open(translation_data_path, 'r', encoding='utf-8') as f:
             translation_data = json.load(f)
+            # Ensure translation data is in page-based format
+            if not isinstance(translation_data, dict) or "pages" not in translation_data:
+                # Convert to page-based format if needed
+                translation_data = {"pages": [{"page_number": 0, "translations": translation_data}]}
         with open(position_data_path, 'r', encoding='utf-8') as f:
             position_data = json.load(f)
         

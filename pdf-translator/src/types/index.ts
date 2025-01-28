@@ -30,6 +30,11 @@ export interface TranslationText {
   translated_text: string;
 }
 
-export interface TranslationData {
+export interface PageTranslation {
+  page_number: number;
   translations: TranslationText[];
+}
+
+export interface TranslationData {
+  pages: PageTranslation[];
 }

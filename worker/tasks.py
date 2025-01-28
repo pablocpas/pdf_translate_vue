@@ -17,7 +17,7 @@ celery_app = Celery(
 )
 
 @celery_app.task(name='regenerate_pdf')
-def regenerate_pdf_task(task_id: str, translation_data: list, position_data: dict):
+def regenerate_pdf_task(task_id: str, translation_data: dict, position_data: dict):
     try:
         logger.info(f"Starting PDF regeneration for task {task_id}")
         
@@ -33,8 +33,9 @@ def regenerate_pdf_task(task_id: str, translation_data: list, position_data: dic
         translation_data_path = output_pdf_path.replace('.pdf', '_translation_data.json')
         with open(translation_data_path, 'r', encoding='utf-8') as f:
             old_data = json.load(f)
-            # Get first translation to check target language
-            first_translation = old_data[0] if old_data else None
+            # Get first translation from first page to check target language
+            first_page = old_data.get("pages", [])[0] if "pages" in old_data else None
+            first_translation = first_page.get("translations", [])[0] if first_page else None
             target_language = first_translation.get("target_language", "es") if first_translation else "es"
         
         # Regenerate PDF

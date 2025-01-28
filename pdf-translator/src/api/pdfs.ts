@@ -100,16 +100,21 @@ const translationTextSchema = z.object({
   translated_text: z.string()
 });
 
-const translationDataSchema = z.object({
+const pageTranslationSchema = z.object({
+  page_number: z.number(),
   translations: z.array(translationTextSchema)
+});
+
+const translationDataSchema = z.object({
+  pages: z.array(pageTranslationSchema)
 });
 
 export async function getTranslationData(taskId: string): Promise<TranslationData> {
   try {
     const response = await apiClient.get(`/pdfs/translation-data/${taskId}`);
-    // Extract only the translations from the response
+    // Extract pages data from the response
     const translationData = {
-      translations: response.data.translations
+      pages: response.data.pages
     };
     const validatedData = translationDataSchema.parse(translationData);
     return validatedData;
