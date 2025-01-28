@@ -18,10 +18,6 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    volumes:
-      - ./uploads:/app/uploads
-      - ./translated:/app/translated
-      - ./backend/main.py:/app/main.py
     environment:
       - UPLOAD_FOLDER=/app/uploads
       - TRANSLATED_FOLDER=/app/translated
@@ -34,11 +30,6 @@ services:
     build:
       context: ./worker
       dockerfile: Dockerfile
-    volumes:
-      - ./uploads:/app/uploads
-      - ./translated:/app/translated
-      - ./worker/tasks.py:/app/tasks.py
-      - ./worker/src:/app/src
 
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
