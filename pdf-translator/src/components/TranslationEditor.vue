@@ -224,13 +224,14 @@ watch(() => currentTask.value?.id, (newId) => {
 
 .monaco-wrapper {
   flex: 1;
-  border-radius: 8px;
+  border-radius: 12px;
   border: 2px solid #e9ecef;
   background: #1e1e1e;
   position: relative;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .loading-overlay {
@@ -267,11 +268,12 @@ watch(() => currentTask.value?.id, (newId) => {
 .pdf-viewer {
   flex: 1;
   border: 2px solid #e9ecef;
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
   background: white;
   position: relative;
   min-height: 0;
+  height: calc(100% - 3rem); /* Account for title and padding */
 }
 
 .pdf-viewer iframe {
