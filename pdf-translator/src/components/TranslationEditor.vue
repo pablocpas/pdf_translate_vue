@@ -39,7 +39,6 @@
           <iframe
             :src="translatedPdfUrl"
             width="100%"
-            height="800"
             frameborder="0"
             title="PDF Preview"
           ></iframe>
@@ -174,13 +173,18 @@ watch(() => currentTask.value?.id, (newId) => {
 <style scoped>
 .editor-container {
   padding: 1rem;
+  height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .editor-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1.5rem;
-  height: calc(100vh - 200px);
+  flex: 1;
+  min-height: 0;
 }
 
 .editor-section, .preview-section {
@@ -189,6 +193,9 @@ watch(() => currentTask.value?.id, (newId) => {
   padding: 1rem;
   display: flex;
   flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
 }
 
 .subtitle {
@@ -196,16 +203,18 @@ watch(() => currentTask.value?.id, (newId) => {
   margin: 0 0 1rem 0;
   color: #1a1b1e;
   font-weight: 600;
+  flex-shrink: 0;
 }
 
 .monaco-wrapper {
-  flex-grow: 1;
+  flex: 1;
   border-radius: 8px;
-  overflow: hidden;
   border: 2px solid #e9ecef;
   background: #1e1e1e;
-  height: calc(100% - 100px);
   position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .loading-overlay {
@@ -219,7 +228,7 @@ watch(() => currentTask.value?.id, (newId) => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  z-index: 10;
+  z-index: 100;
   color: white;
 }
 
@@ -240,11 +249,17 @@ watch(() => currentTask.value?.id, (newId) => {
 }
 
 .pdf-viewer {
-  flex-grow: 1;
+  flex: 1;
   border: 2px solid #e9ecef;
   border-radius: 8px;
   overflow: hidden;
   background: white;
+  position: relative;
+  min-height: 0;
+}
+
+.pdf-viewer iframe {
+  height: 100%;
 }
 
 .editor-actions {
@@ -252,6 +267,9 @@ watch(() => currentTask.value?.id, (newId) => {
   display: flex;
   align-items: center;
   gap: 1rem;
+  position: relative;
+  z-index: 50;
+  flex-shrink: 0;
 }
 
 .save-button {
@@ -263,6 +281,8 @@ watch(() => currentTask.value?.id, (newId) => {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  position: relative;
+  z-index: 50;
 }
 
 .save-button:hover:not(:disabled) {
@@ -278,5 +298,7 @@ watch(() => currentTask.value?.id, (newId) => {
 .error-message {
   color: #e03131;
   font-size: 0.875rem;
+  position: relative;
+  z-index: 50;
 }
 </style>
