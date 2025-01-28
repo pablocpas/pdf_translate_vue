@@ -91,7 +91,6 @@ class PagePositionData(BaseModel):
 
 class TranslationData(BaseModel):
     translations: List[TranslationText]
-    positions: List[PagePositionData]
 
 
 class UploadResponse(BaseModel):
@@ -336,16 +335,76 @@ async def update_translation_data(task_id: str, translation_data: TranslationDat
         with open(translation_data_path, 'w', encoding='utf-8') as f:
             json.dump(jsonable_encoder(translation_data.translations), f, ensure_ascii=False, indent=2)
             
-        # Save positions
-        with open(position_data_path, 'w', encoding='utf-8') as f:
-            json.dump(jsonable_encoder(translation_data.positions), f, ensure_ascii=False, indent=2)
-            
-        # Trigger PDF regeneration with updated data
-        # TODO: Implement PDF regeneration with updated translation data
+        # Load existing position data
+        with open(position_data_path, 'r', encoding='utf-8') as f:
+            position_data = json.load(f)
         
-        return {"message": "Translation data updated successfully"}
+        # Trigger PDF regeneration
+        regenerate_task = celery_app.send_task(
+            'regenerate_pdf',
+            kwargs={
+                'task_id': task_id,
+                'translation_data': jsonable_encoder(translation_data.translations),
+                'position_data': position_data
+            }
+        )
+        
+        # Wait for regeneration to complete
+        regenerate_result = regenerate_task.get(timeout=30)  # 30 seconds timeout
+        
+        if regenerate_result.get("error"):
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error regenerating PDF: {regenerate_result['error']}"
+            )
+        
+        return {"message": "Translation data updated and PDF regenerated successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error updating translation data: {str(e)}")
+
+@app.post("/pdfs/regenerate/{task_id}")
+async def regenerate_pdf_endpoint(task_id: str):
+    celery_task = AsyncResult(task_id, app=celery_app)
+    
+    if celery_task.state != 'SUCCESS':
+        raise HTTPException(status_code=400, detail="Original translation is not complete")
+    
+    result = celery_task.result
+    translation_data_path = result.get("translation_data_path")
+    position_data_path = translation_data_path.replace('_translation_data.json', '_translation_data_position.json')
+    
+    if not translation_data_path or not Path(translation_data_path).exists():
+        raise HTTPException(status_code=404, detail="Translation data not found")
+    
+    try:
+        # Load translation and position data
+        with open(translation_data_path, 'r', encoding='utf-8') as f:
+            translation_data = json.load(f)
+        with open(position_data_path, 'r', encoding='utf-8') as f:
+            position_data = json.load(f)
+        
+        # Send regeneration task to worker
+        regenerate_task = celery_app.send_task(
+            'regenerate_pdf',
+            kwargs={
+                'task_id': task_id,
+                'translation_data': translation_data,
+                'position_data': position_data
+            }
+        )
+        
+        # Wait for regeneration to complete
+        regenerate_result = regenerate_task.get(timeout=30)  # 30 seconds timeout
+        
+        if regenerate_result.get("error"):
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error regenerating PDF: {regenerate_result['error']}"
+            )
+        
+        return {"message": "PDF regenerated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error regenerating PDF: {str(e)}")
 
 @app.get("/")
 async def read_root():

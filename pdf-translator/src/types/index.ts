@@ -30,32 +30,6 @@ export interface TranslationText {
   translated_text: string;
 }
 
-export interface TranslationPosition {
-  id: number;
-  position: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    coordinates: {
-      x1: number;
-      y1: number;
-      x2: number;
-      y2: number;
-    };
-  };
-}
-
-export interface PagePositionData {
-  page_number: number;
-  dimensions: {
-    width: number;
-    height: number;
-  };
-  regions: TranslationPosition[];
-}
-
 export interface TranslationData {
   translations: TranslationText[];
-  positions: PagePositionData[];
 }

@@ -100,13 +100,16 @@ def process_pdf(pdf_path, output_pdf_path, target_language, progress_callback=No
         # Cerramos el documento final
         pdf_canvas.save()
         logger.info(f"Translated PDF saved as {output_pdf_path}")
-        # Save translation data to JSON file
+        # Save translation data to JSON files
         translation_data_path = output_pdf_path.replace('.pdf', '_translation_data.json')
         position_data_path = output_pdf_path.replace('.pdf', '_translation_data_position.json')
+        images_data_path = output_pdf_path.replace('.pdf', '_images')
+        os.makedirs(images_data_path, exist_ok=True)
 
         logger.info(f"Saving translation data to: {translation_data_path}")
         logger.info(f"Translation data content: {json.dumps(all_translation_data, indent=2)}")
         
+        # Save translations
         with open(translation_data_path, 'w') as f:
             json.dump([
                 {"id": r["id"], 
@@ -116,23 +119,65 @@ def process_pdf(pdf_path, output_pdf_path, target_language, progress_callback=No
                 for r in page["text_regions"]
             ], f, ensure_ascii=False, indent=2)
 
-        # Guardar posiciones
+        # Save positions and image regions
+        page_image_data = []
+        for idx, page in enumerate(all_translation_data):
+            # Extract image regions
+            layout = get_layout(pages[idx], model_type)
+            _, image_regions = merge_overlapping_text_regions(layout)
+            
+            # Save each image region
+            page_images = []
+            for i, (element, _) in enumerate(image_regions):
+                x1, y1, x2, y2 = element.coordinates
+                cropped_image = pages[idx].crop((
+                    max(x1 - MARGIN, 0),
+                    max(y1 - MARGIN, 0),
+                    min(x2 + MARGIN, pages[idx].width),
+                    min(y2 + MARGIN, pages[idx].height)
+                ))
+                
+                # Save image
+                image_filename = f"page_{idx}_image_{i}.png"
+                image_path = os.path.join(images_data_path, image_filename)
+                cropped_image.save(image_path)
+                
+                # Store image data
+                page_images.append({
+                    "path": image_filename,
+                    "position": {
+                        "x": x1 * (page["page_dimensions"]["width"] / pages[idx].width),
+                        "y": (pages[idx].height - y2) * (page["page_dimensions"]["height"] / pages[idx].height),
+                        "width": (x2 - x1) * (page["page_dimensions"]["width"] / pages[idx].width),
+                        "height": (y2 - y1) * (page["page_dimensions"]["height"] / pages[idx].height)
+                    }
+                })
+            
+            page_image_data.append({
+                "page_number": idx,
+                "images": page_images
+            })
+
+        # Save positions and image data
         with open(position_data_path, 'w') as f:
-            json.dump([
-                {
-                    "page_number": idx,
-                    "dimensions": page["page_dimensions"],
-                    "regions": [
-                        {
-                            "id": r["id"],
-                            "position": r["position"],
-                            "coordinates": r["position"]["coordinates"]
-                        }
-                        for r in page["text_regions"]
-                    ]
-                }
-                for idx, page in enumerate(all_translation_data)
-            ], f, ensure_ascii=False, indent=2)
+            json.dump({
+                "pages": [
+                    {
+                        "page_number": idx,
+                        "dimensions": page["page_dimensions"],
+                        "regions": [
+                            {
+                                "id": r["id"],
+                                "position": r["position"],
+                                "coordinates": r["position"]["coordinates"]
+                            }
+                            for r in page["text_regions"]
+                        ]
+                    }
+                    for idx, page in enumerate(all_translation_data)
+                ],
+                "images": page_image_data
+            }, f, ensure_ascii=False, indent=2)
         
         logger.info("Translation data saved successfully")
         result = {
@@ -260,6 +305,99 @@ def process_text_regions(text_regions: List[Tuple[Any, Any]], page_image: Image.
         paragraph.drawOn(pdf_canvas, frame_x, frame_y)
         
     return translation_data
+
+def regenerate_pdf(output_pdf_path: str, translation_data: List[dict], position_data: dict, target_language: str) -> dict:
+    """
+    Regenerate PDF using existing translation and position data.
+    
+    :param output_pdf_path: Path where to save the regenerated PDF
+    :param translation_data: List of translation entries
+    :param position_data: Dictionary containing page positions and image data
+    :param target_language: Target language for font selection
+    :return: Dictionary with result information
+    """
+    try:
+        # Create PDF canvas
+        pdf_canvas = canvas.Canvas(output_pdf_path)
+        styles = getSampleStyleSheet()
+        base_style = styles["Normal"]
+        font_name = get_font_for_language(target_language)
+        
+        # Create translation lookup
+        translation_lookup = {t["id"]: t for t in translation_data}
+        
+        # Get images directory path
+        images_dir = output_pdf_path.replace('.pdf', '_images')
+        
+        # Process each page
+        for page_data in position_data["pages"]:
+            # Set page size
+            dimensions = page_data["dimensions"]
+            pdf_canvas.setPageSize((dimensions["width"], dimensions["height"]))
+            
+            # Create white background
+            pdf_canvas.setFillColorRGB(1, 1, 1)  # White
+            pdf_canvas.rect(0, 0, dimensions["width"], dimensions["height"], fill=1)
+            
+            # Draw saved images
+            page_images = next(
+                (p["images"] for p in position_data["images"] if p["page_number"] == page_data["page_number"]),
+                []
+            )
+            for image_data in page_images:
+                image_path = os.path.join(images_dir, image_data["path"])
+                if os.path.exists(image_path):
+                    pos = image_data["position"]
+                    pdf_canvas.drawImage(
+                        image_path,
+                        pos["x"],
+                        pos["y"],
+                        pos["width"],
+                        pos["height"]
+                    )
+            
+            # Draw text regions
+            for region in page_data["regions"]:
+                translation = translation_lookup.get(region["id"])
+                if translation:
+                    pos = region["position"]
+                    
+                    # Create paragraph style
+                    min_font_size = 8
+                    font_scale_factor = 0.8
+                    initial_font_size = max(min_font_size, pos["height"] * font_scale_factor)
+                    paragraph_style = ParagraphStyle(
+                        name=f"CustomStyle_{region['id']}",
+                        parent=base_style,
+                        fontName=font_name,
+                        fontSize=initial_font_size,
+                        leading=initial_font_size * 1.2,
+                        encoding='utf-8'
+                    )
+                    
+                    # Create and adjust paragraph
+                    paragraph = Paragraph(translation["translated_text"], paragraph_style)
+                    paragraph = adjust_paragraph_font_size(
+                        paragraph, pos["width"], pos["height"], paragraph_style, min_font_size
+                    )
+                    
+                    # Draw paragraph
+                    paragraph.wrapOn(pdf_canvas, pos["width"], pos["height"])
+                    paragraph.drawOn(pdf_canvas, pos["x"], pos["y"])
+            
+            pdf_canvas.showPage()
+        
+        pdf_canvas.save()
+        logger.info(f"Regenerated PDF saved as {output_pdf_path}")
+        
+        return {
+            "success": True,
+            "output_path": output_pdf_path
+        }
+        
+    except Exception as e:
+        logger.error(f"Error regenerating PDF: {e}")
+        return {"error": str(e)}
 
 def process_image_regions(image_regions: List[Tuple[Any, Any]], page_image: Image.Image, pdf_canvas: canvas.Canvas, page_width: float, page_height: float) -> None:
     """

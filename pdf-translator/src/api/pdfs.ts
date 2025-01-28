@@ -94,52 +94,24 @@ export async function downloadTranslatedPdf(taskId: string): Promise<Blob> {
   return response.data;
 }
 
-const coordinatesSchema = z.object({
-  x1: z.number(),
-  y1: z.number(),
-  x2: z.number(),
-  y2: z.number()
-});
-
-const positionSchema = z.object({
-  x: z.number(),
-  y: z.number(),
-  width: z.number(),
-  height: z.number(),
-  coordinates: coordinatesSchema
-});
-
 const translationTextSchema = z.object({
   id: z.number(),
   original_text: z.string(),
   translated_text: z.string()
 });
 
-const translationPositionSchema = z.object({
-  id: z.number(),
-  position: positionSchema
-});
-
-const pageDimensionsSchema = z.object({
-  width: z.number(),
-  height: z.number()
-});
-
-const pagePositionDataSchema = z.object({
-  page_number: z.number(),
-  dimensions: pageDimensionsSchema,
-  regions: z.array(translationPositionSchema)
-});
-
 const translationDataSchema = z.object({
-  translations: z.array(translationTextSchema),
-  positions: z.array(pagePositionDataSchema)
+  translations: z.array(translationTextSchema)
 });
 
 export async function getTranslationData(taskId: string): Promise<TranslationData> {
   try {
     const response = await apiClient.get(`/pdfs/translation-data/${taskId}`);
-    const validatedData = translationDataSchema.parse(response.data);
+    // Extract only the translations from the response
+    const translationData = {
+      translations: response.data.translations
+    };
+    const validatedData = translationDataSchema.parse(translationData);
     return validatedData;
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -161,11 +133,22 @@ export async function updateTranslationData(taskId: string, data: TranslationDat
     // Validate data before sending
     translationDataSchema.parse(data);
     
-    await apiClient.put(`/pdfs/translation-data/${taskId}`, data, {
+    const response = await apiClient.put(`/pdfs/translation-data/${taskId}`, data, {
       headers: {
         'Content-Type': 'application/json'
       }
     });
+
+    if (response.data?.error) {
+      throw new ApiRequestError(
+        'Error updating translation data',
+        500,
+        {
+          code: ErrorCode.SERVER_ERROR,
+          message: response.data.error
+        }
+      );
+    }
   } catch (error) {
     if (error instanceof z.ZodError) {
       throw new ApiRequestError(
@@ -178,5 +161,20 @@ export async function updateTranslationData(taskId: string, data: TranslationDat
       );
     }
     throw error;
+  }
+}
+
+export async function regeneratePdf(taskId: string): Promise<void> {
+  const response = await apiClient.post(`/pdfs/regenerate/${taskId}`);
+  
+  if (response.data?.error) {
+    throw new ApiRequestError(
+      'Error regenerating PDF',
+      500,
+      {
+        code: ErrorCode.SERVER_ERROR,
+        message: response.data.error
+      }
+    );
   }
 }

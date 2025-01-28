@@ -106,19 +106,22 @@ async function loadTranslationData() {
   }
   
   loading.value = true;
-  console.log('Loading translation data for task:', currentTask.value.id);
   try {
     const data = await getTranslationData(currentTask.value.id);
-    console.log('Received translation data:', data);
-    
-    // Data should already be in the correct format with translations and positions
-    const formattedJson = JSON.stringify(data, null, 2);
+    // Only show translations to the user
+    const formattedJson = JSON.stringify({
+      translations: data.translations.map(t => ({
+        id: t.id,
+        original_text: t.original_text,
+        translated_text: t.translated_text
+      }))
+    }, null, 2);
     editorContent.value = formattedJson;
     editorRef.value.setValue(formattedJson);
     editorRef.value.getAction('editor.action.formatDocument').run();
-    console.log('Editor content set');
   } catch (error) {
     console.error('Error loading translation data:', error);
+    alert('Error loading translation data');
   } finally {
     loading.value = false;
   }
@@ -133,25 +136,37 @@ async function saveChanges() {
     
     // Sanitize text content to handle special characters
     const sanitizedTranslations = data.translations.map((translation: any) => ({
-      ...translation,
+      id: translation.id,
       original_text: translation.original_text.replace(/'/g, ""),
       translated_text: translation.translated_text.replace(/'/g, "")
     }));
 
     const translationData = {
-      translations: sanitizedTranslations,
-      positions: data.positions
+      translations: sanitizedTranslations
     };
 
-    console.log('Saving data:', translationData);
-    await updateTranslationData(currentTask.value.id, translationData);
-    // Reload the PDF preview
-    const iframe = document.querySelector('.pdf-viewer iframe') as HTMLIFrameElement;
-    if (iframe) {
-      iframe.src = iframe.src;
+    console.log('Saving translations:', translationData);
+    
+    try {
+      // Save changes and wait for PDF regeneration
+      await updateTranslationData(currentTask.value.id, translationData);
+      console.log('Translation data updated and PDF regenerated');
+      
+      // Reload the PDF preview
+      const iframe = document.querySelector('.pdf-viewer iframe') as HTMLIFrameElement;
+      if (iframe) {
+        // Add timestamp to force reload and bypass cache
+        iframe.src = `${translatedPdfUrl.value}?t=${Date.now()}`;
+      }
+    } catch (error: any) {
+      console.error('Error updating translation:', error);
+      // Show error to user
+      const errorMessage = error.details?.message || 'Error updating translation';
+      alert(errorMessage);
     }
   } catch (error) {
-    console.error('Error saving translation data:', error);
+    console.error('Error parsing JSON:', error);
+    alert('Error parsing JSON data');
   } finally {
     loading.value = false;
   }
