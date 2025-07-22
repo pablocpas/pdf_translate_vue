@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   frontend:
     build:
@@ -21,12 +19,16 @@ services:
     volumes:
       - ./uploads:/app/uploads
       - ./translated:/app/translated
-      - ./backend/main.py:/app/main.py
+      - ./shared:/app/shared:ro  # Mount shared modules
+      - ./backend:/app/backend:ro  # Mount backend code for development
     environment:
       - UPLOAD_FOLDER=/app/uploads
       - TRANSLATED_FOLDER=/app/translated
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - PYTHONPATH=/app:/app/shared
+      - DEBUG=true
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       - redis
 
@@ -37,14 +39,15 @@ services:
     volumes:
       - ./uploads:/app/uploads
       - ./translated:/app/translated
-      - ./worker/tasks.py:/app/tasks.py
-      - ./worker/src:/app/src
-
+      - ./shared:/app/shared:ro  # Mount shared modules
+      - ./worker:/app/worker:ro  # Mount worker code for development
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - TRANSLATED_FOLDER=/app/translated
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PYTHONPATH=/app:/app/shared
+      - DEBUG=true
     depends_on:
       - redis
 

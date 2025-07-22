@@ -1,117 +1,160 @@
-from celery import Celery, current_task
-import os
-from pathlib import Path
-import logging
-import json
-from src.domain.translator.processor import process_pdf, regenerate_pdf
+"""
+Celery task definitions.
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+This module defines the Celery tasks for PDF processing, significantly
+simplified from the original monolithic implementation.
+"""
 
-# Configure Celery
-celery_app = Celery(
-    'pdf_translator',
-    broker=os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0'),
-    backend=os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
-)
+from typing import Dict, Any
 
-@celery_app.task(name='regenerate_pdf')
-def regenerate_pdf_task(task_id: str, translation_data: dict, position_data: dict):
-    try:
-        logger.info(f"Starting PDF regeneration for task {task_id}")
+from shared.models.task import TaskResult
+from shared.utils.logging_utils import get_logger
+from infrastructure.celery_app import celery_app
+from core.orchestrator import TranslationOrchestrator
+
+logger = get_logger(__name__)
+
+
+@celery_app.task(name='process_pdf', bind=True)
+def process_pdf(
+    self, 
+    pdf_path: str, 
+    target_language: str, 
+    task_id: str, 
+    model: str = "gpt-4o-mini"
+) -> Dict[str, Any]:
+    """
+    Process a PDF file for translation.
+    
+    This task orchestrates the complete translation workflow,
+    replacing the complex logic in the original task function.
+    
+    Args:
+        self: Celery task instance (for progress updates)
+        pdf_path: Path to the PDF file
+        target_language: Target language code
+        task_id: Unique task identifier
+        model: Translation model to use
         
-        # Get directories
-        translated_dir = Path(os.getenv('TRANSLATED_FOLDER', '/app/translated'))
-        translated_dir.mkdir(exist_ok=True)
-        
-        # Get paths
-        output_filename = f"{task_id}_translated.pdf"
-        output_pdf_path = str(translated_dir / output_filename)
-        
-        # Get target language from translation data file
-        translation_data_path = output_pdf_path.replace('.pdf', '_translation_data.json')
-        with open(translation_data_path, 'r', encoding='utf-8') as f:
-            old_data = json.load(f)
-            # Get first translation from first page to check target language
-            first_page = old_data.get("pages", [])[0] if "pages" in old_data else None
-            first_translation = first_page.get("translations", [])[0] if first_page else None
-            target_language = first_translation.get("target_language", "es") if first_translation else "es"
-        
-        # Regenerate PDF
-        result = regenerate_pdf(
-            output_pdf_path=output_pdf_path,
-            translation_data=translation_data,
-            position_data=position_data,
-            target_language=target_language
-        )
-        
-        if "error" in result:
-            logger.error(f"Error regenerating PDF: {result['error']}")
-            return result
-            
-        logger.info("PDF regeneration completed successfully")
-        return {
-            "success": True,
-            "output_path": output_pdf_path
+    Returns:
+        Dict[str, Any]: Task result
+    """
+    logger.info(f"Starting PDF processing: {pdf_path} -> {target_language}")
+    
+    # Create orchestrator with progress callback
+    def update_progress(current: int, total: int, status: str = "processing"):
+        """Update task progress."""
+        progress = {
+            'current': current,
+            'total': total,
+            'percent': int((current / total) * 100) if total > 0 else 0,
+            'status': status
         }
-    except Exception as e:
-        logger.error(f"Unexpected error in regeneration task: {str(e)}")
-        return {
-            "error": str(e)
-        }
-
-@celery_app.task(name='translate_pdf')
-def translate_pdf(task_id: str = None, pdf_path: str = None, target_language: str = "es", model_type: str = "primalayout"):
+        self.update_state(state='PROGRESS', meta={'progress': progress})
+    
+    orchestrator = TranslationOrchestrator(
+        task_id=task_id,
+        progress_callback=update_progress
+    )
+    
     try:
-        logger.info(f"Starting translation of PDF {pdf_path} to {target_language}")
-        
-        # Get directories from environment variables or use defaults
-        translated_dir = Path(os.getenv('TRANSLATED_FOLDER', '/app/translated'))
-        translated_dir.mkdir(exist_ok=True)
-        
-        # Define output path
-        output_filename = f"{task_id}_translated.pdf"
-        output_pdf_path = str(translated_dir / output_filename)
-        
-        def update_progress(current: int, total: int):
-            progress = {
-                'current': current,
-                'total': total,
-                'percent': int((current / total) * 100)
-            }
-            current_task.update_state(
-                state='PROGRESS',
-                meta=progress
-            )
-            logger.info(f"Processing page {current} of {total}")
-
-        # Process the PDF
-        result = process_pdf(
+        # Execute translation workflow
+        result = orchestrator.process_translation(
             pdf_path=pdf_path,
-            output_pdf_path=output_pdf_path,
             target_language=target_language,
-            progress_callback=update_progress,
-            model_type=model_type
+            model=model
         )
         
-        if "error" in result:
-            logger.error(f"Error processing PDF: {result['error']}")
+        if result.success:
+            logger.info(f"PDF processing completed successfully: {task_id}")
             return {
-                "status": "failed",
-                "error": result["error"]
+                "success": True,
+                "translated_file": result.data.get("output_path"),
+                "task_id": task_id
+            }
+        else:
+            logger.error(f"PDF processing failed: {result.error.message}")
+            return {
+                "error": result.error.message,
+                "error_code": result.error.code,
+                "task_id": task_id
             }
             
-        logger.info(f"PDF translation completed successfully")
-        logger.info(f"Result from process_pdf: {result}")
-        return {
-            "status": "completed",
-            "output_path": output_pdf_path,
-            "translation_data_path": result.get("translation_data_path")
-        }
     except Exception as e:
-        logger.error(f"Unexpected error in translation task: {str(e)}")
+        logger.error(f"Unexpected error in PDF processing: {str(e)}", exc_info=True)
         return {
-            "status": "failed",
-            "error": str(e)
+            "error": f"Unexpected error: {str(e)}",
+            "error_code": "UNEXPECTED_ERROR",
+            "task_id": task_id
+        }
+
+
+@celery_app.task(name='regenerate_pdf', bind=True)
+def regenerate_pdf(
+    self,
+    task_id: str, 
+    translation_data: Dict[str, Any], 
+    position_data: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Regenerate PDF with updated translations.
+    
+    This task handles PDF regeneration with user-edited translations,
+    replacing the complex regeneration logic in the original task.
+    
+    Args:
+        self: Celery task instance (for progress updates)
+        task_id: Task identifier
+        translation_data: Updated translation data
+        position_data: Position data for text blocks
+        
+    Returns:
+        Dict[str, Any]: Task result
+    """
+    logger.info(f"Starting PDF regeneration: {task_id}")
+    
+    # Create orchestrator with progress callback
+    def update_progress(current: int, total: int, status: str = "regenerating"):
+        """Update task progress."""
+        progress = {
+            'current': current,
+            'total': total,
+            'percent': int((current / total) * 100) if total > 0 else 0,
+            'status': status
+        }
+        self.update_state(state='PROGRESS', meta={'progress': progress})
+    
+    orchestrator = TranslationOrchestrator(
+        task_id=task_id,
+        progress_callback=update_progress
+    )
+    
+    try:
+        # Execute regeneration workflow
+        result = orchestrator.regenerate_pdf(
+            translation_data=translation_data,
+            position_data=position_data
+        )
+        
+        if result.success:
+            logger.info(f"PDF regeneration completed successfully: {task_id}")
+            return {
+                "success": True,
+                "output_path": result.data.get("output_path"),
+                "task_id": task_id
+            }
+        else:
+            logger.error(f"PDF regeneration failed: {result.error.message}")
+            return {
+                "error": result.error.message,
+                "error_code": result.error.code,
+                "task_id": task_id
+            }
+            
+    except Exception as e:
+        logger.error(f"Unexpected error in PDF regeneration: {str(e)}", exc_info=True)
+        return {
+            "error": f"Unexpected error: {str(e)}",
+            "error_code": "UNEXPECTED_ERROR",
+            "task_id": task_id
         }

@@ -24,13 +24,15 @@ const translationTaskSchema = z.object({
 
 export async function uploadPdf(formData: FormData): Promise<UploadResponse> {
   try {
-    const response = await apiClient.post<UploadResponse>('/pdfs/translate', formData, {
+    const response = await apiClient.post<any>('/api/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     });
     
-    const validatedData = uploadResponseSchema.parse(response.data);
+    // Backend returns a TranslationTask object, we need to map it to UploadResponse
+    const uploadResponse = { taskId: response.data.id };
+    const validatedData = uploadResponseSchema.parse(uploadResponse);
     return validatedData;
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -49,10 +51,21 @@ export async function uploadPdf(formData: FormData): Promise<UploadResponse> {
 
 export async function getTranslationStatus(taskId: string): Promise<TranslationTask> {
   try {
-    const response = await apiClient.get<TranslationTask>(`/pdfs/status/${taskId}`);
+    const response = await apiClient.get<any>(`/api/translation/${taskId}/status`);
     console.log('Server response:', response.data);
+    
+    // Map backend response to frontend format
+    const mappedData = {
+      id: response.data.id,
+      status: response.data.status,
+      originalFile: response.data.original_file,
+      translatedFile: response.data.translated_file,
+      error: response.data.error,
+      progress: response.data.progress
+    };
+    
     try {
-      const validatedData = translationTaskSchema.parse(response.data);
+      const validatedData = translationTaskSchema.parse(mappedData);
       return validatedData;
     } catch (validationError) {
       if (validationError instanceof z.ZodError) {
@@ -76,7 +89,7 @@ export async function getTranslationStatus(taskId: string): Promise<TranslationT
 }
 
 export async function downloadTranslatedPdf(taskId: string): Promise<Blob> {
-  const response = await apiClient.get(`/pdfs/download/translated/${taskId}`, {
+  const response = await apiClient.get(`/api/download/${taskId}`, {
     responseType: 'blob',
   });
   
@@ -111,7 +124,7 @@ const translationDataSchema = z.object({
 
 export async function getTranslationData(taskId: string): Promise<TranslationData> {
   try {
-    const response = await apiClient.get(`/pdfs/translation-data/${taskId}`);
+    const response = await apiClient.get(`/api/translation/${taskId}/data`);
     // Extract pages data from the response
     const translationData = {
       pages: response.data.pages
@@ -138,7 +151,7 @@ export async function updateTranslationData(taskId: string, data: TranslationDat
     // Validate data before sending
     translationDataSchema.parse(data);
     
-    const response = await apiClient.put(`/pdfs/translation-data/${taskId}`, data, {
+    const response = await apiClient.put(`/api/translation/${taskId}/data`, data, {
       headers: {
         'Content-Type': 'application/json'
       }
@@ -170,7 +183,13 @@ export async function updateTranslationData(taskId: string, data: TranslationDat
 }
 
 export async function regeneratePdf(taskId: string): Promise<void> {
-  const response = await apiClient.post(`/pdfs/regenerate/${taskId}`);
+  // Note: The regenerate functionality is now part of the PUT /api/translation/{taskId}/data endpoint
+  // This function may no longer be needed, but keeping for backward compatibility
+  const response = await apiClient.put(`/api/translation/${taskId}/data`, {}, {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  });
   
   if (response.data?.error) {
     throw new ApiRequestError(
