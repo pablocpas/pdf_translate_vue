@@ -1,26 +1,14 @@
 import { z } from 'zod';
-import type { UploadResponse, TranslationTask, TranslationData } from '@/types';
 import apiClient from './client';
 import { ApiRequestError, ErrorCode } from '@/types/api';
-
-const uploadResponseSchema = z.object({
-  taskId: z.string().min(1)
-});
-
-const translationProgressSchema = z.object({
-  current: z.number(),
-  total: z.number(),
-  percent: z.number()
-});
-
-const translationTaskSchema = z.object({
-  id: z.string().min(1, 'ID is required'),
-  status: z.enum(['pending', 'processing', 'completed', 'failed']),
-  originalFile: z.string(),
-  translatedFile: z.string().nullable(),
-  error: z.string().nullable(),
-  progress: translationProgressSchema.nullable()
-});
+import { 
+  uploadResponseSchema, 
+  translationTaskSchema, 
+  translationDataSchema,
+  type UploadResponse, 
+  type TranslationTask, 
+  type TranslationData 
+} from '@/types/schemas';
 
 export async function uploadPdf(formData: FormData): Promise<UploadResponse> {
   try {
@@ -32,7 +20,7 @@ export async function uploadPdf(formData: FormData): Promise<UploadResponse> {
     
     const validatedData = uploadResponseSchema.parse(response.data);
     return validatedData;
-  } catch (error) {
+  } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       throw new ApiRequestError(
         'Respuesta del servidor inválida',
@@ -54,13 +42,13 @@ export async function getTranslationStatus(taskId: string): Promise<TranslationT
     try {
       const validatedData = translationTaskSchema.parse(response.data);
       return validatedData;
-    } catch (validationError) {
+    } catch (validationError: unknown) {
       if (validationError instanceof z.ZodError) {
         console.error('Validation error details:', validationError.errors);
       }
       throw validationError;
     }
-  } catch (error) {
+  } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       throw new ApiRequestError(
         'Respuesta del servidor inválida',
@@ -94,20 +82,6 @@ export async function downloadTranslatedPdf(taskId: string): Promise<Blob> {
   return response.data;
 }
 
-const translationTextSchema = z.object({
-  id: z.number(),
-  original_text: z.string(),
-  translated_text: z.string()
-});
-
-const pageTranslationSchema = z.object({
-  page_number: z.number(),
-  translations: z.array(translationTextSchema)
-});
-
-const translationDataSchema = z.object({
-  pages: z.array(pageTranslationSchema)
-});
 
 export async function getTranslationData(taskId: string): Promise<TranslationData> {
   try {
@@ -118,7 +92,7 @@ export async function getTranslationData(taskId: string): Promise<TranslationDat
     };
     const validatedData = translationDataSchema.parse(translationData);
     return validatedData;
-  } catch (error) {
+  } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       throw new ApiRequestError(
         'Respuesta del servidor inválida',
@@ -154,7 +128,7 @@ export async function updateTranslationData(taskId: string, data: TranslationDat
         }
       );
     }
-  } catch (error) {
+  } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       throw new ApiRequestError(
         'Datos de traducción inválidos',

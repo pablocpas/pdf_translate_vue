@@ -1,24 +1,9 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { TranslationTask, ModelType } from '@/types';
-import { z } from 'zod';
+import { ModelType } from '@/types';
+import { translationTaskSchema, type TranslationTask } from '@/types/schemas';
 
 const MAX_HISTORY_SIZE = 10;
-
-const translationProgressSchema = z.object({
-  current: z.number(),
-  total: z.number(),
-  percent: z.number()
-});
-
-const translationTaskSchema = z.object({
-  id: z.string().min(1, 'ID is required'),
-  status: z.enum(['pending', 'processing', 'completed', 'failed']),
-  originalFile: z.string(),
-  translatedFile: z.string().optional().nullable(),
-  error: z.string().optional().nullable(),
-  progress: translationProgressSchema.optional().nullable()
-});
 
 export const useTranslationStore = defineStore('translation', () => {
   // Persistence functions
