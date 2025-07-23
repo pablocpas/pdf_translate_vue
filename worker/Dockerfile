@@ -1,4 +1,4 @@
-FROM python:3.9-slim-buster as builder
+FROM python:3.9-slim-bullseye as builder
 
 RUN apt-get update && apt-get install -y \
     wget \
@@ -32,7 +32,7 @@ RUN mkdir -p models/publaynet && \
     wget -O models/publaynet/config.yaml https://huggingface.co/truefoundry/layout-parser/resolve/main/mask_rcnn_X_101_32x8d_FPN_3x.yml
 
 # Runtime stage
-FROM python:3.9-slim-buster
+FROM python:3.9-slim-bullseye
 
 # Runtime dependencies
 RUN apt-get update && apt-get install -y \
