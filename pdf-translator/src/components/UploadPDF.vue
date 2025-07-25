@@ -28,7 +28,7 @@
         <button
           type="submit"
           class="submit-button"
-          :disabled="isSubmitting || isProcessing"
+          :disabled="isSubmitting || (isProcessing && pollingInterval !== null)"
         >
           <div class="button-content">
             <!-- Icono de spinner/subida -->
@@ -128,12 +128,18 @@ const isProcessing = computed(() => {
 
 // Convierte el `step` de texto en un valor numérico para la UI
 const getStepProgress = (step: string | undefined): number => {
+  console.log('Current step:', step); // Debug
   switch(step) {
     case 'En cola': return 10;
     case 'Convirtiendo PDF a imágenes': return 30;
     case 'Procesando páginas en paralelo': return 60;
     case 'Ensamblando PDF final': return 90;
-    default: return 5; // Estado inicial o desconocido
+    case 'Finalizando traducción...': return 95;
+    case 'Procesando resultado...': return 85;
+    case 'Desconocido': return 5;
+    default: 
+      console.log('Unknown step, using 15%:', step);
+      return 15; // Estado inicial o desconocido
   }
 };
 
@@ -203,13 +209,16 @@ const startPolling = (taskId: string) => {
   pollingInterval.value = window.setInterval(async () => {
     try {
       const taskStatus = await getTranslationStatus(taskId);
+      console.log('Polling status:', taskStatus); // Debug
       currentTask.value = taskStatus; // Actualiza la tarea local
       translationStore.setCurrentTask(taskStatus); // Actualiza la store global
 
       if (taskStatus.status === 'COMPLETED') {
+        console.log('Task completed, redirecting to result');
         clearInterval(pollingInterval.value!);
         router.push('/result');
       } else if (taskStatus.status === 'FAILED') {
+        console.log('Task failed:', taskStatus.error);
         clearInterval(pollingInterval.value!);
         errors.general = taskStatus.error || 'Error en la traducción';
         errors.code = ErrorCode.TRANSLATION_FAILED;
@@ -244,13 +253,24 @@ const handleRetry = () => {
 const handleSubmit = async () => {
   if (!validate()) return;
   
-  isSubmitting.value = true;
+  // Limpiar estado anterior
+  currentTask.value = null;
+  translationStore.clearCurrentTask();
   errors.general = '';
+  errors.code = undefined;
+  
+  // Limpiar cualquier polling previo
+  if (pollingInterval.value) {
+    clearInterval(pollingInterval.value);
+    pollingInterval.value = null;
+  }
+  
+  isSubmitting.value = true;
   
   const formData = new FormData();
   formData.append('file', form.file!);
-  formData.append('target_language', form.targetLanguage);
-  formData.append('model', form.model);
+  formData.append('tgtLang', form.targetLanguage); // Corregir nombre parámetro
+  formData.append('modelType', form.model); // Corregir nombre parámetro
   
   await mutation.mutateAsync(formData);
 

@@ -8,3 +8,6 @@ celery==5.4.0
 redis==5.2.1
 pdf2image==1.17.0
 numpy==1.24.4
+boto3>=1.26.0
+botocore>=1.29.0
+pydantic>=1.8.0,<2.0.0

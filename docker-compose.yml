@@ -27,8 +27,17 @@ services:
       - TRANSLATED_FOLDER=/app/translated
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=us-east-1
+      - AWS_S3_BUCKET=pdf-translator-bucket
+      - AWS_S3_ENDPOINT_URL=http://minio:9000
+      - AWS_S3_PUBLIC_ENDPOINT_URL=http://localhost:9000
+      - AWS_S3_USE_SSL=false
+      - TRANSLATED_TTL_DAYS=7
     depends_on:
       - redis
+      - minio
 
   worker:
     build:
@@ -45,10 +54,40 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - TRANSLATED_FOLDER=/app/translated
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=us-east-1
+      - AWS_S3_BUCKET=pdf-translator-bucket
+      - AWS_S3_ENDPOINT_URL=http://minio:9000
+      - AWS_S3_PUBLIC_ENDPOINT_URL=http://localhost:9000
+      - AWS_S3_USE_SSL=false
+      - TRANSLATED_TTL_DAYS=7
     depends_on:
       - redis
+      - minio
 
   redis:
     image: redis:alpine
     ports:
       - "6379:6379"
+
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  minio_data:
