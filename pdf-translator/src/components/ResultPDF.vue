@@ -11,10 +11,11 @@
       <h2 class="title">Resultado de la traducción</h2>
 
       <!-- Estado de procesamiento -->
-      <div v-if="isProcessing" class="processing-status">
+      <div v-if="isProcessing" class="PROCESSING-status">
         <div class="spinner"></div>
-        <p class="status-text">Traduciendo documento...</p>
-        <p class="status-detail">{{ currentTask?.status }}</p>
+        <p class="status-text">Procesando documento...</p>
+        <p class="status-detail">{{ currentTask?.progress?.step || 'Iniciando proceso...' }}</p>
+        <p v-if="currentTask?.progress?.details" class="status-detail">{{ currentTask.progress.details }}</p>
       </div>
 
       <!-- Resultado -->
@@ -105,12 +106,12 @@ const translatedPdfUrl = computed(() =>
 );
 
 const isProcessing = computed(() => 
-  currentTask.value?.status === 'pending' || 
-  currentTask.value?.status === 'processing'
+  currentTask.value?.status === 'PENDING' || 
+  currentTask.value?.status === 'PROCESSING'
 );
 
 const isCompleted = computed(() => 
-  currentTask.value?.status === 'completed'
+  currentTask.value?.status === 'COMPLETED'
 );
 
 async function checkStatus() {
@@ -123,7 +124,7 @@ async function checkStatus() {
     const task = await getTranslationStatus(currentTask.value.id);
     translationStore.setCurrentTask(task);
 
-    if (task.status === 'failed' || task.status === 'completed') {
+    if (task.status === 'FAILED' || task.status === 'COMPLETED') {
       clearInterval(checkInterval.value);
     }
   } catch (e) {
@@ -192,7 +193,7 @@ onUnmounted(() => {
   letter-spacing: -0.01em;
 }
 
-.processing-status {
+.PROCESSING-status {
   text-align: center;
   padding: 3rem 2rem;
   background: #f8f9fa;

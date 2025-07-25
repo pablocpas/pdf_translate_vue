@@ -72,20 +72,20 @@ export const useTranslationStore = defineStore('translation', () => {
 
   // Computed properties
   const isTaskInProgress = computed(() => 
-    currentTask.value?.status === 'pending' || 
-    currentTask.value?.status === 'processing'
+    currentTask.value?.status === 'PENDING' || 
+    currentTask.value?.status === 'PROCESSING'
   );
 
   const hasError = computed(() => 
-    currentTask.value?.status === 'failed'
+    currentTask.value?.status === 'FAILED'
   );
 
   const isCompleted = computed(() => 
-    currentTask.value?.status === 'completed'
+    currentTask.value?.status === 'COMPLETED'
   );
 
   const lastCompletedTask = computed(() => 
-    taskHistory.value.find(task => task.status === 'completed')
+    taskHistory.value.find(task => task.status === 'COMPLETED')
   );
 
   return {

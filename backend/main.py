@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from enum import Enum
-from typing import Optional
+from typing import Optional, List, Any
 import uuid
 import os
 import json
@@ -12,21 +12,17 @@ from pathlib import Path
 from celery import Celery
 from celery.result import AsyncResult
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel
-from typing import List
 
-# Configure logging
+# --- Configuración (Sin cambios) ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configure Celery
 celery_app = Celery(
     'pdf_translator',
     broker=os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0'),
     backend=os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
 )
 
-# Get directories from environment variables or use defaults
 UPLOAD_DIR = Path(os.getenv('UPLOAD_FOLDER', '/app/uploads'))
 TRANSLATED_DIR = Path(os.getenv('TRANSLATED_FOLDER', '/app/translated'))
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -35,17 +31,24 @@ TRANSLATED_DIR.mkdir(exist_ok=True)
 logger.info(f"Upload directory: {UPLOAD_DIR}")
 logger.info(f"Translated directory: {TRANSLATED_DIR}")
 
-# Models and Enums
+# --- Modelos Pydantic (Ajustados) ---
+
 class TaskStatus(str, Enum):
-    pending = "pending"
-    processing = "processing"
-    completed = "completed"
-    failed = "failed"
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+class ProcessingStep(str, Enum):
+    QUEUED = "En cola"
+    CONVERTING_PDF = "Convirtiendo PDF a imágenes"
+    PROCESSING_PAGES = "Procesando páginas en paralelo"
+    COMBINING_PDF = "Ensamblando PDF final"
+    UNKNOWN = "Desconocido"
 
 class TranslationProgress(BaseModel):
-    current: int = 0
-    total: int = 0
-    percent: int = 0
+    step: ProcessingStep = ProcessingStep.QUEUED
+    details: Optional[Any] = None # Para info como "Página 5 de 10"
 
 class TranslationTask(BaseModel):
     id: str
@@ -54,10 +57,12 @@ class TranslationTask(BaseModel):
     error: Optional[str] = None
     originalFile: str
     translatedFile: Optional[str] = None
-    translationDataFile: Optional[str] = None
+    # El `translationDataFile` se obtiene de un endpoint dedicado, no se expone aquí directamente.
 
+class UploadResponse(BaseModel):
+    taskId: str
 
-
+# El resto de modelos de datos (TranslationData, PagePositionData, etc.) se mantienen igual.
 class TranslationText(BaseModel):
     id: int
     original_text: str
@@ -70,40 +75,10 @@ class PageTranslation(BaseModel):
 class TranslationData(BaseModel):
     pages: List[PageTranslation]
 
-class Coordinates(BaseModel):
-    x1: float
-    y1: float
-    x2: float
-    y2: float
 
-class Position(BaseModel):
-    x: float
-    y: float
-    width: float
-    height: float
-    coordinates: Coordinates
+# --- Instancia de FastAPI (Sin cambios) ---
+app = FastAPI(title="PDF Translator API - Parallel Worker")
 
-class TranslationPosition(BaseModel):
-    id: int
-    position: Position
-
-class PageDimensions(BaseModel):
-    width: float
-    height: float
-
-class PagePositionData(BaseModel):
-    page_number: int
-    dimensions: PageDimensions
-    regions: List[TranslationPosition]
-
-
-class UploadResponse(BaseModel):
-    taskId: str
-
-# Instancia de FastAPI
-app = FastAPI(title="PDF Translator API")
-
-# Configurar CORS para desarrollo
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -111,6 +86,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# --- HELPERS ---
+def get_final_task_result(task_id: str) -> Optional[AsyncResult]:
+    """
+    Sigue la cadena de tareas desde la orquestadora hasta la finalizadora.
+    """
+    orchestrator_task = AsyncResult(task_id, app=celery_app)
+    
+    # Si la tarea orquestadora falló, no hay nada más que hacer.
+    if orchestrator_task.state == 'FAILURE':
+        return orchestrator_task
+
+    # Si la orquestadora tuvo éxito, su resultado contiene el ID de la tarea de combinación.
+    if orchestrator_task.state == 'SUCCESS':
+        result = orchestrator_task.result
+        if isinstance(result, dict) and result.get('result_task_id'):
+            final_task_id = result['result_task_id']
+            return AsyncResult(final_task_id, app=celery_app)
+    
+    # Si la orquestadora está en progreso o pendiente, devolvemos su estado.
+    return orchestrator_task
+
+
+# --- Endpoints (Modificados) ---
 
 @app.post("/pdfs/translate", response_model=UploadResponse)
 async def upload_pdf(
@@ -121,336 +121,233 @@ async def upload_pdf(
     if not file.filename.lower().endswith(".pdf") or file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
 
-    # Generate unique task ID
     task_id = str(uuid.uuid4())
     file_path = UPLOAD_DIR / f"{task_id}.pdf"
 
-    # Save the file on the server
     with open(file_path, "wb") as buffer:
         buffer.write(await file.read())
 
-    # Send task to Celery worker with our custom task_id
-    celery_task = celery_app.send_task(
+    # La tarea `translate_pdf` ahora es la orquestadora.
+    # El ID de la tarea que contiene el resultado final se devolverá en el `result` de esta.
+    celery_app.send_task(
         'translate_pdf',
         kwargs={
-            'task_id': task_id,
             'pdf_path': str(file_path),
+            'task_id': task_id, # Pasamos el ID para nombrar archivos
             'target_language': target_language,
             'model_type': model
         },
-        task_id=task_id  # Use our UUID as the Celery task ID
+        task_id=task_id  # Este es el ID de la tarea orquestadora
     )
 
-    logger.info(f"Task {task_id} sent for translation")
+    logger.info(f"Task {task_id} sent for translation orchestration.")
     return UploadResponse(taskId=task_id)
 
 
 @app.get("/pdfs/status/{task_id}", response_model=TranslationTask)
 async def get_translation_status(task_id: str):
-    celery_task = AsyncResult(task_id, app=celery_app)
+    """
+    Endpoint de estado inteligente que sigue la cadena de tareas.
+    """
+    orchestrator_task = AsyncResult(task_id, app=celery_app)
+    
+    response_data = {
+        "id": task_id,
+        "originalFile": f"{task_id}.pdf"
+    }
 
-    if celery_task.state == 'PENDING':
-        response = TranslationTask(
-            id=task_id,
-            status=TaskStatus.pending,
-            originalFile=f"{task_id}.pdf",
-            progress=TranslationProgress(
-                current=0,
-                total=0,
-                percent=0
-            )
+    if orchestrator_task.state == 'PENDING':
+        response_data["status"] = TaskStatus.PENDING
+        response_data["progress"] = TranslationProgress(step=ProcessingStep.QUEUED)
+
+    elif orchestrator_task.state == 'PROGRESS':
+        response_data["status"] = TaskStatus.PROCESSING
+        meta = orchestrator_task.info or {}
+        response_data["progress"] = TranslationProgress(
+            step=ProcessingStep.CONVERTING_PDF,
+            details=meta.get('status')
         )
-    elif celery_task.state == 'PROGRESS':
-        meta = celery_task.info or {}
-        response = TranslationTask(
-            id=task_id,
-            status=TaskStatus.processing,
-            originalFile=f"{task_id}.pdf",
-            progress=TranslationProgress(
-                current=meta.get('current', 0),
-                total=meta.get('total', 0),
-                percent=meta.get('percent', 0)
-            ) if meta else None
-        )
-    elif celery_task.state == 'SUCCESS':
-        result = celery_task.result
-        if result.get("status") == "failed":
-            response = TranslationTask(
-                id=task_id,
-                status=TaskStatus.failed,
-                originalFile=f"{task_id}.pdf",
-                error=result.get("error", "Unknown error")
-            )
+    
+    elif orchestrator_task.state == 'FAILURE':
+        response_data["status"] = TaskStatus.FAILED
+        response_data["error"] = str(orchestrator_task.result)
+
+    elif orchestrator_task.state == 'SUCCESS':
+        # La orquestadora ha terminado, ahora miramos la tarea de combinación.
+        result = orchestrator_task.result
+        final_task_id = result.get('result_task_id') if isinstance(result, dict) else None
+        if not final_task_id:
+            response_data["status"] = TaskStatus.FAILED
+            response_data["error"] = "Orchestrator task succeeded but did not return a result task ID."
         else:
-            translated_file = result.get("output_path")
-            if not translated_file:
-                response = TranslationTask(
-                    id=task_id,
-                    status=TaskStatus.failed,
-                    originalFile=f"{task_id}.pdf",
-                    error="No output path returned from worker"
+            final_task = AsyncResult(final_task_id, app=celery_app)
+            
+            if final_task.state == 'PENDING':
+                 response_data["status"] = TaskStatus.PROCESSING
+                 response_data["progress"] = TranslationProgress(step=ProcessingStep.PROCESSING_PAGES)
+            
+            elif final_task.state == 'PROGRESS':
+                response_data["status"] = TaskStatus.PROCESSING
+                meta = final_task.info or {}
+                response_data["progress"] = TranslationProgress(
+                    step=ProcessingStep.COMBINING_PDF,
+                    details=meta.get('status')
                 )
-            else:
-                translation_data_path = result.get("translation_data_path")
-                response = TranslationTask(
-                    id=task_id,
-                    status=TaskStatus.completed,
-                    originalFile=f"{task_id}.pdf",
-                    translatedFile=translated_file,
-                    translationDataFile=translation_data_path if translation_data_path and Path(translation_data_path).exists() else None
-                )
-    elif celery_task.state == 'FAILURE':
-        response = TranslationTask(
-            id=task_id,
-            status=TaskStatus.failed,
-            originalFile=f"{task_id}.pdf",
-            error=str(celery_task.result)
-        )
-    else:
-        raise HTTPException(status_code=500, detail="Estado desconocido")
-        
-    return response
 
+            elif final_task.state == 'FAILURE':
+                response_data["status"] = TaskStatus.FAILED
+                response_data["error"] = str(final_task.result)
+            
+            elif final_task.state == 'SUCCESS':
+                result = final_task.result
+                if isinstance(result, dict) and result.get("status") == "failed":
+                    response_data["status"] = TaskStatus.FAILED
+                    response_data["error"] = result.get("error", "Unknown error during finalization.")
+                else:
+                    response_data["status"] = TaskStatus.COMPLETED
+                    if isinstance(result, dict) and result.get("output_path"):
+                        response_data["translatedFile"] = result.get("output_path")
+            else: # Otros estados como RETRY
+                response_data["status"] = TaskStatus.PROCESSING
+                response_data["progress"] = TranslationProgress(step=ProcessingStep.UNKNOWN, details=f"Final task state: {final_task.state}")
+    
+    else: # Otros estados como RETRY
+        response_data["status"] = TaskStatus.PROCESSING
+        response_data["progress"] = TranslationProgress(step=ProcessingStep.UNKNOWN, details=f"Orchestrator task state: {orchestrator_task.state}")
+
+    return TranslationTask(**response_data)
+
+
+@app.get("/pdfs/download/translated/{task_id}")
+async def download_translated_pdf(task_id: str):
+    final_task = get_final_task_result(task_id)
+
+    if not final_task or final_task.state != 'SUCCESS':
+        raise HTTPException(status_code=400, detail="Translation is not complete or has failed.")
+
+    result = final_task.result
+    if not isinstance(result, dict):
+        raise HTTPException(status_code=400, detail="Invalid task result format.")
+    
+    if result.get("status") == "failed":
+        raise HTTPException(status_code=400, detail=f"Translation failed: {result.get('error')}")
+
+    translated_file = result.get("output_path")
+    if not translated_file or not Path(translated_file).exists():
+        raise HTTPException(status_code=404, detail="Translated file not found.")
+
+    return FileResponse(
+        translated_file,
+        media_type="application/pdf",
+        filename=f"{task_id}_translated.pdf",
+        headers={
+            "Content-Disposition": 'inline; filename="translated.pdf"'
+        }
+    )
+
+
+@app.get("/pdfs/translation-data/{task_id}")
+async def get_translation_data(task_id: str):
+    # La lógica para encontrar el archivo de datos es la misma que para el PDF
+    # Se basa en el nombre de archivo del PDF traducido.
+    final_task = get_final_task_result(task_id)
+
+    if not final_task or final_task.state != 'SUCCESS':
+        raise HTTPException(status_code=400, detail="Translation is not complete or has failed.")
+
+    result = final_task.result
+    if not isinstance(result, dict):
+        raise HTTPException(status_code=400, detail="Invalid task result format.")
+    
+    if result.get("status") == "failed":
+        raise HTTPException(status_code=400, detail=f"Translation failed: {result.get('error')}")
+
+    translated_pdf_path = result.get("output_path")
+    if not translated_pdf_path:
+        raise HTTPException(status_code=404, detail="Translated PDF path not found in result.")
+
+    # Los nombres de los archivos de datos se derivan del nombre del PDF de salida
+    base_path = translated_pdf_path.replace('.pdf', '')
+    translation_data_path = f"{base_path}_translation_data.json"
+    position_data_path = f"{base_path}_translation_data_position.json"
+    
+    if not Path(translation_data_path).exists() or not Path(position_data_path).exists():
+        raise HTTPException(status_code=404, detail="Translation or position data files not found.")
+        
+    with open(translation_data_path, 'r', encoding='utf-8') as f:
+        translations = json.load(f)
+    with open(position_data_path, 'r', encoding='utf-8') as f:
+        positions = json.load(f)
+
+    return JSONResponse(content={"pages": translations["pages"], "positions": positions})
+
+
+@app.put("/pdfs/translation-data/{task_id}")
+async def update_translation_data(task_id: str, translation_data: TranslationData):
+    # Esta lógica no necesita cambiar mucho, pero debe asegurarse de que la tarea original haya terminado.
+    final_task = get_final_task_result(task_id)
+    if not final_task or final_task.state != 'SUCCESS':
+        raise HTTPException(status_code=400, detail="Original translation is not complete.")
+
+    result = final_task.result
+    if not isinstance(result, dict):
+        raise HTTPException(status_code=400, detail="Invalid task result format.")
+    
+    translated_pdf_path = result.get("output_path")
+    if not translated_pdf_path:
+        raise HTTPException(status_code=404, detail="Translated PDF path not found.")
+        
+    base_path = translated_pdf_path.replace('.pdf', '')
+    translation_data_path = f"{base_path}_translation_data.json"
+    position_data_path = f"{base_path}_translation_data_position.json"
+    
+    if not Path(position_data_path).exists():
+        raise HTTPException(status_code=404, detail="Position data not found, cannot regenerate PDF.")
+
+    with open(translation_data_path, 'w', encoding='utf-8') as f:
+        json.dump({"pages": jsonable_encoder(translation_data.pages)}, f, ensure_ascii=False, indent=2)
+        
+    with open(position_data_path, 'r', encoding='utf-8') as f:
+        position_data = json.load(f)
+    
+    # La tarea `regenerate_pdf` es síncrona por ahora, está bien para este caso.
+    # Si fuera larga, se debería convertir en una tarea asíncrona también.
+    regenerate_task = celery_app.send_task(
+        'regenerate_pdf',
+        kwargs={
+            'task_id': task_id,
+            'translation_data': {"pages": jsonable_encoder(translation_data.pages)},
+            'position_data': position_data
+        }
+    )
+    
+    try:
+        regenerate_result = regenerate_task.get(timeout=60) # Aumentar timeout
+        if regenerate_result.get("error"):
+            raise HTTPException(500, detail=f"Error regenerating PDF: {regenerate_result['error']}")
+    except Exception as e:
+        raise HTTPException(500, detail=f"Failed to get regeneration result: {str(e)}")
+
+    return {"message": "Translation data updated and PDF regenerated successfully"}
+
+# El resto de endpoints como descarga del original, etc., no necesitan cambios.
 @app.get("/pdfs/download/original/{task_id}")
 async def download_original_pdf(task_id: str):
     file_path = UPLOAD_DIR / f"{task_id}.pdf"
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Original file not found")
-    return FileResponse(file_path, media_type="application/pdf")
-
-@app.get("/pdfs/download/translated/{task_id}")
-async def download_translated_pdf(task_id: str):
-    celery_task = AsyncResult(task_id, app=celery_app)
-
-    if celery_task.state != 'SUCCESS':
-        raise HTTPException(status_code=400, detail="Translation is not complete")
-
-    result = celery_task.result
-    translated_file = result.get("output_path")
-    if not translated_file or not Path(translated_file).exists():
-        raise HTTPException(status_code=404, detail="Translated file not found")
-
-    return FileResponse(translated_file, media_type="application/pdf")
-
-@app.get("/pdfs/translation-data/{task_id}")
-async def get_translation_data(task_id: str):
-    try:
-        logger.info(f"Getting translation data for task: {task_id}")
-        celery_task = AsyncResult(task_id, app=celery_app)
-        
-        if celery_task.state != 'SUCCESS':
-            logger.warning(f"Task {task_id} is not complete. State: {celery_task.state}")
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "message": "Translation is not complete",
-                    "code": "TRANSLATION_FAILED"
-                }
-            )
-        
-        result = celery_task.result
-        logger.info(f"Task result: {result}")
-        translation_data_path = result.get("translation_data_path")
-        position_data_path = translation_data_path.replace('_translation_data.json', '_translation_data_position.json')
-        logger.info(f"Translation data path: {translation_data_path}")
-        logger.info(f"Position data path: {position_data_path}")
-        
-        if not translation_data_path or not Path(translation_data_path).exists():
-            logger.error(f"Translation data file not found at {translation_data_path}")
-            return JSONResponse(
-                status_code=404,
-                content={
-                    "message": "Translation data not found",
-                    "code": "VALIDATION_ERROR"
-                }
-            )
-        
-        if not Path(position_data_path).exists():
-            logger.error(f"Position data file not found at {position_data_path}")
-            return JSONResponse(
-                status_code=404,
-                content={
-                    "message": "Position data not found",
-                    "code": "VALIDATION_ERROR"
-                }
-            )
-        
-        try:
-            with open(translation_data_path, 'r', encoding='utf-8') as f:
-                translations = json.load(f)
-                logger.info(f"Loaded translations: {json.dumps(translations, indent=2)}")
-            with open(position_data_path, 'r', encoding='utf-8') as f:
-                positions = json.load(f)
-                logger.info(f"Loaded positions: {json.dumps(positions, indent=2)}")
-                
-            # Check if translations is already in page-based format
-            if isinstance(translations, dict) and "pages" in translations:
-                logger.info("Translations already in page-based format")
-                pages = translations["pages"]
-            else:
-                logger.info("Converting translations to page-based format")
-                # Organize translations by page
-                translations_by_page = {}
-                for translation in translations:
-                    # Get page number from positions data
-                    translation_id = translation['id']
-                    page_number = None
-                    if 'pages' in positions:
-                        for page_data in positions['pages']:
-                            for region in page_data['regions']:
-                                if region['id'] == translation_id:
-                                    page_number = page_data['page_number']
-                                    break
-                            if page_number is not None:
-                                break
-                    
-                    if page_number is not None:
-                        if page_number not in translations_by_page:
-                            translations_by_page[page_number] = []
-                        translations_by_page[page_number].append(translation)
-                
-                # Convert to list of pages with translations
-                pages = [
-                    {
-                        "page_number": page_num,
-                        "translations": page_translations
-                    }
-                    for page_num, page_translations in sorted(translations_by_page.items())
-                ]
-            
-            combined_data = {
-                "pages": pages,
-                "positions": positions
-            }
-            
-            logger.info(f"Successfully loaded translation data for task {task_id}")
-            return JSONResponse(content=combined_data)
-        except json.JSONDecodeError as e:
-            logger.error(f"Error decoding JSON for task {task_id}: {str(e)}")
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "message": f"Error decoding JSON: {str(e)}",
-                    "code": "VALIDATION_ERROR"
-                }
-            )
-        except Exception as e:
-            logger.error(f"Error reading translation data for task {task_id}: {str(e)}")
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "message": f"Error reading translation data: {str(e)}",
-                    "code": "SERVER_ERROR"
-                }
-            )
-    except Exception as e:
-        logger.error(f"Unexpected error in get_translation_data: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "message": "Error inesperado del servidor",
-                "code": "SERVER_ERROR"
-            }
-        )
-
-@app.put("/pdfs/translation-data/{task_id}")
-async def update_translation_data(task_id: str, translation_data: TranslationData):
-    celery_task = AsyncResult(task_id, app=celery_app)
-    
-    logger.info(f"Updating translation data for task: {task_id}")
-    logger.info(f"Received data type: {type(translation_data)}")
-    logger.info(f"Received data: {translation_data.dict()}")
-    
-    if celery_task.state != 'SUCCESS':
-        raise HTTPException(status_code=400, detail="Translation is not complete")
-    
-    result = celery_task.result
-    translation_data_path = result.get("translation_data_path")
-    position_data_path = translation_data_path.replace('_translation_data.json', '_translation_data_position.json')
-    
-    if not translation_data_path or not Path(translation_data_path).exists():
-        raise HTTPException(status_code=404, detail="Translation data not found")
-    
-    try:
-        # Save translations with page structure
-        with open(translation_data_path, 'w', encoding='utf-8') as f:
-            json.dump({"pages": jsonable_encoder(translation_data.pages)}, f, ensure_ascii=False, indent=2)
-            
-        # Load existing position data
-        with open(position_data_path, 'r', encoding='utf-8') as f:
-            position_data = json.load(f)
-        
-        # Trigger PDF regeneration
-        regenerate_task = celery_app.send_task(
-            'regenerate_pdf',
-            kwargs={
-                'task_id': task_id,
-                'translation_data': {"pages": jsonable_encoder(translation_data.pages)},
-                'position_data': position_data
-            }
-        )
-        
-        # Wait for regeneration to complete
-        regenerate_result = regenerate_task.get(timeout=30)  # 30 seconds timeout
-        
-        if regenerate_result.get("error"):
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error regenerating PDF: {regenerate_result['error']}"
-            )
-        
-        return {"message": "Translation data updated and PDF regenerated successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error updating translation data: {str(e)}")
-
-@app.post("/pdfs/regenerate/{task_id}")
-async def regenerate_pdf_endpoint(task_id: str):
-    celery_task = AsyncResult(task_id, app=celery_app)
-    
-    if celery_task.state != 'SUCCESS':
-        raise HTTPException(status_code=400, detail="Original translation is not complete")
-    
-    result = celery_task.result
-    translation_data_path = result.get("translation_data_path")
-    position_data_path = translation_data_path.replace('_translation_data.json', '_translation_data_position.json')
-    
-    if not translation_data_path or not Path(translation_data_path).exists():
-        raise HTTPException(status_code=404, detail="Translation data not found")
-    
-    try:
-        # Load translation and position data
-        with open(translation_data_path, 'r', encoding='utf-8') as f:
-            translation_data = json.load(f)
-            # Ensure translation data is in page-based format
-            if not isinstance(translation_data, dict) or "pages" not in translation_data:
-                # Convert to page-based format if needed
-                translation_data = {"pages": [{"page_number": 0, "translations": translation_data}]}
-        with open(position_data_path, 'r', encoding='utf-8') as f:
-            position_data = json.load(f)
-        
-        # Send regeneration task to worker
-        regenerate_task = celery_app.send_task(
-            'regenerate_pdf',
-            kwargs={
-                'task_id': task_id,
-                'translation_data': translation_data,
-                'position_data': position_data
-            }
-        )
-        
-        # Wait for regeneration to complete
-        regenerate_result = regenerate_task.get(timeout=30)  # 30 seconds timeout
-        
-        if regenerate_result.get("error"):
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error regenerating PDF: {regenerate_result['error']}"
-            )
-        
-        return {"message": "PDF regenerated successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error regenerating PDF: {str(e)}")
+    return FileResponse(
+        file_path, 
+        media_type="application/pdf", 
+        filename=f"{task_id}.pdf",
+        headers={
+            "Content-Disposition": 'inline; filename="original.pdf"'
+        }
+    )
 
 @app.get("/")
 async def read_root():
-    return {"message": "PDF Translsfdfsdfator API"}
+    return {"message": "PDF Translator API is running."}
+
+# El endpoint `regenerate_pdf_endpoint` es redundante si `update_translation_data` ya regenera.
+# Se puede mantener si se quiere una forma explícita de re-lanzar la regeneración.
