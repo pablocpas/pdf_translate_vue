@@ -269,7 +269,8 @@ def finalize_task(self, results_list: List[Dict[str, Any]], task_id: str, origin
                             "position": text_region["position"]
                         }
                         for text_region in page_data.get("text_regions", [])
-                    ]
+                    ],
+                    "image_regions": page_data.get("image_regions", [])
                 }
                 for i, page_data in enumerate(results_list) if not page_data.get("error")
             ]
@@ -369,11 +370,14 @@ def regenerate_pdf_s3_task(task_id: str, translation_data: dict, position_data: 
                         "position": region_pos["position"]
                     })
             
+            # Obtener image_regions guardadas
+            image_regions = page_pos.get("image_regions", []) if page_pos else []
+            
             results_list.append({
                 "page_number": page_num,
                 "page_dimensions": dimensions,
                 "text_regions": text_regions,
-                "image_regions": [],  # Las imágenes se mantienen desde S3
+                "image_regions": image_regions,
                 "error": None
             })
         
