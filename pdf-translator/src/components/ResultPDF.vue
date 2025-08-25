@@ -1,7 +1,7 @@
 <template>
   <div class="result-container">
     <div v-if="showEditor" class="editor-view">
-      <TranslationEditor />
+      <TranslationEditor :taskId="currentTask?.id" />
       <button class="back-button" @click="showEditor = false">
         Volver a la Vista PDF
       </button>

@@ -1,9 +1,10 @@
 import boto3
 from botocore.client import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, FlexibleChecksumError
 from io import BytesIO
 import logging
 from typing import Optional
+import time
 
 from ..config.settings import settings
 
@@ -20,7 +21,14 @@ _client = _session.client(
         signature_version="s3v4",
         s3={
             'addressing_style': 'path'  # Mejor compatibilidad con MinIO
-        }
+        },
+        # Enhanced MinIO compatibility settings
+        disable_request_compression=True,
+        retries={
+            'max_attempts': 3,
+            'mode': 'adaptive'
+        },
+        max_pool_connections=50
     ),
     aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
     aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
@@ -63,16 +71,70 @@ def upload_bytes(key: str, data: bytes, content_type: Optional[str] = None):
         logger.error(f"Error uploading to {key}: {e}")
         raise
 
-def download_bytes(key: str) -> bytes:
-    """Download bytes from S3"""
-    try:
-        obj = _client.get_object(Bucket=settings.AWS_S3_BUCKET, Key=key)
-        data = obj["Body"].read()
-        logger.info(f"Downloaded {len(data)} bytes from s3://{settings.AWS_S3_BUCKET}/{key}")
-        return data
-    except Exception as e:
-        logger.error(f"Error downloading from {key}: {e}")
-        raise
+def download_bytes(key: str, max_retries: int = 3) -> bytes:
+    """Download bytes from S3 with robust error handling and retry logic"""
+    last_exception = None
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"Downloading {key} (attempt {attempt + 1}/{max_retries})")
+            
+            # Try different approaches based on attempt number
+            if attempt == 0:
+                # First attempt: try with ChecksumMode disabled if supported
+                try:
+                    obj = _client.get_object(
+                        Bucket=settings.AWS_S3_BUCKET, 
+                        Key=key,
+                        ChecksumMode='DISABLED'
+                    )
+                except Exception:
+                    # If ChecksumMode parameter not supported, fall back to normal request
+                    obj = _client.get_object(Bucket=settings.AWS_S3_BUCKET, Key=key)
+            else:
+                # Subsequent attempts: use standard get_object
+                obj = _client.get_object(Bucket=settings.AWS_S3_BUCKET, Key=key)
+            
+            # Read data with checksum error handling
+            try:
+                data = obj["Body"].read()
+                logger.info(f"Downloaded {len(data)} bytes from s3://{settings.AWS_S3_BUCKET}/{key}")
+                return data
+                
+            except FlexibleChecksumError as checksum_error:
+                logger.warning(f"Checksum validation failed on attempt {attempt + 1}: {checksum_error}")
+                last_exception = checksum_error
+                
+                # For checksum errors, try to read the body without validation
+                # Reset the stream and read again
+                try:
+                    obj = _client.get_object(Bucket=settings.AWS_S3_BUCKET, Key=key)
+                    # Read raw data, accepting potential checksum mismatch
+                    response_body = obj["Body"]._raw_stream
+                    data = response_body.read()
+                    logger.warning(f"Downloaded {len(data)} bytes from s3://{settings.AWS_S3_BUCKET}/{key} (bypassed checksum)")
+                    return data
+                except Exception as bypass_error:
+                    logger.error(f"Failed to bypass checksum validation: {bypass_error}")
+                    last_exception = bypass_error
+            
+        except (ClientError, FlexibleChecksumError) as e:
+            logger.warning(f"Download attempt {attempt + 1} failed for {key}: {e}")
+            last_exception = e
+            
+        except Exception as e:
+            logger.error(f"Unexpected error on attempt {attempt + 1} for {key}: {e}")
+            last_exception = e
+        
+        # Wait before retrying (exponential backoff)
+        if attempt < max_retries - 1:
+            wait_time = (attempt + 1) * 0.5  # 0.5s, 1s, 1.5s
+            logger.info(f"Waiting {wait_time}s before retry...")
+            time.sleep(wait_time)
+    
+    # All attempts failed
+    logger.error(f"Failed to download {key} after {max_retries} attempts")
+    raise last_exception or Exception(f"Download failed after {max_retries} attempts")
 
 def key_exists(key: str) -> bool:
     """Check if a key exists in S3"""

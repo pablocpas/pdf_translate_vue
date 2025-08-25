@@ -8,6 +8,7 @@ import uuid
 import os
 import json
 import logging
+import time
 from pathlib import Path
 from celery import Celery
 from celery.result import AsyncResult
@@ -175,7 +176,18 @@ async def get_task_status(task_id: str):
                 # FALLBACK: Verificar si el PDF ya se creó aunque la tarea parezca pendiente
                 logger.info(f"Final task appears {state}, checking if PDF exists as fallback")
                 translated_key = f"{task_id}/translated/translated.pdf"
-                if key_exists(translated_key):
+                
+                # Retry logic for fallback case too (sometimes tasks complete but state hasn't updated)
+                pdf_exists = False
+                for attempt in range(3):
+                    if key_exists(translated_key):
+                        pdf_exists = True
+                        break
+                    if attempt < 2:  # Don't sleep on the last attempt
+                        logger.info(f"Fallback: PDF not found on attempt {attempt + 1}, retrying in 1 second...")
+                        time.sleep(1)
+                
+                if pdf_exists:
                     logger.info(f"PDF found despite task state {state}, marking as SUCCESS")
                     state = 'SUCCESS'
                     info = {'status': 'DONE', 'translated_key': translated_key}
@@ -218,16 +230,25 @@ async def get_task_status(task_id: str):
                 translated_key = f"{task_id}/translated/translated.pdf"
                 logger.info(f"Using default translated_key: {translated_key}")
             
-            if key_exists(translated_key):
+            # Retry logic for S3 verification (sometimes there's a small delay)
+            pdf_exists = False
+            for attempt in range(3):
+                if key_exists(translated_key):
+                    pdf_exists = True
+                    break
+                if attempt < 2:  # Don't sleep on the last attempt
+                    logger.info(f"PDF not found on attempt {attempt + 1}, retrying in 1 second...")
+                    time.sleep(1)
+            
+            if pdf_exists:
                 status = TaskStatus.COMPLETED
                 progress = TranslationProgress(step=ProcessingStep.COMBINING_PDF)
                 logger.info(f"Task {task_id} confirmed complete - PDF exists in S3 at {translated_key}")
             else:
                 # PDF no existe aún, mantener como procesando
-                logger.warning(f"Task {task_id} marked SUCCESS but PDF not found in S3 at {translated_key}, keeping as PROCESSING")
+                logger.warning(f"Task {task_id} marked SUCCESS but PDF not found in S3 at {translated_key} after 3 attempts, keeping as PROCESSING")
                 status = TaskStatus.PROCESSING
                 progress = TranslationProgress(step=ProcessingStep.COMBINING_PDF, details="Finalizando...")
-                state = 'PROGRESS'  # Override para logging
         elif state == 'FAILURE':
             status = TaskStatus.FAILED
             progress = None
