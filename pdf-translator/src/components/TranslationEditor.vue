@@ -1,47 +1,76 @@
 <template>
   <div class="editor-container">
     <div class="editor-grid">
-      <!-- JSON Editor -->
+      <!-- Panel Izquierdo: Editor de Textos -->
       <div class="editor-section">
-        <h3 class="subtitle">Editor JSON</h3>
-        <div class="monaco-wrapper">
-          <div v-if="loading" class="loading-overlay">
-            <div class="loading-spinner"></div>
-            <p>Cargando datos...</p>
-          </div>
-          <vue-monaco-editor
-            v-model:value="editorContent"
-            language="json"
-            wordWrap="on"
-            theme="vs-dark"
-            :options="editorOptions"
-            @mount="handleMount"
-          />
+        <h3 class="subtitle">Editor de Traducciones</h3>
+        
+        <div v-if="loading" class="loading-state">
+          <div class="loading-spinner"></div>
+          <p>Cargando datos de traducción...</p>
         </div>
-        <div class="editor-actions">
-          <button 
-            class="save-button"
-            :disabled="!isValidJson || loading"
-            @click="saveChanges"
+        
+        <div v-else-if="translationPages.length === 0" class="empty-state">
+          <p>No se encontraron datos de traducción</p>
+        </div>
+        
+        <div v-else class="translations-container">
+          <div 
+            v-for="page in translationPages" 
+            :key="page.page_number"
+            class="page-group"
           >
-            Guardar Cambios
-          </button>
-          <span v-if="!isValidJson" class="error-message">
-            JSON inválido
-          </span>
+            <h4 class="page-title">Página {{ page.page_number }}</h4>
+            
+            <div 
+              v-for="translation in page.translations"
+              :key="translation.id"
+              class="translation-item"
+            >
+              <div class="original-text">
+                <label class="text-label">Texto Original:</label>
+                <div class="text-display">{{ translation.original_text }}</div>
+              </div>
+              
+              <div class="translated-text">
+                <label class="text-label" :for="`translation-${translation.id}`">
+                  Texto Traducido:
+                </label>
+                <textarea
+                  :id="`translation-${translation.id}`"
+                  v-model="translation.translated_text"
+                  class="text-input"
+                  rows="3"
+                  placeholder="Escriba la traducción aquí..."
+                />
+              </div>
+            </div>
+          </div>
+          
+          <div class="editor-actions">
+            <button 
+              class="save-button"
+              :disabled="loading || saving"
+              @click="saveChanges"
+            >
+              <span v-if="saving">Guardando...</span>
+              <span v-else>Guardar Cambios</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- PDF Preview -->
+      <!-- Panel Derecho: Visor PDF -->
       <div class="preview-section">
-        <h3 class="subtitle">Vista Previa</h3>
+        <h3 class="subtitle">Vista Previa del PDF</h3>
         <div class="pdf-viewer">
           <iframe
-            :src="translatedPdfUrl"
+            :src="pdfPreviewUrl"
             width="100%"
+            height="100%"
             frameborder="0"
             title="PDF Preview"
-          ></iframe>
+          />
         </div>
       </div>
     </div>
@@ -49,138 +78,91 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, shallowRef } from 'vue';
-import { VueMonacoEditor } from '@guolao/vue-monaco-editor';
-import { useTranslationStore } from '@/stores/translationStore';
+import { ref, computed, onMounted, watch } from 'vue';
 import { getTranslationData, updateTranslationData } from '@/api/pdfs';
-import type { editor } from 'monaco-editor';
+import type { TranslationData, PageTranslation } from '@/types/schemas';
 
-const translationStore = useTranslationStore();
-const currentTask = computed(() => translationStore.currentTask);
+// Props
+interface Props {
+  taskId?: string;
+}
 
-const editorContent = ref('');
-const isValidJson = ref(true);
-const editorRef = shallowRef();
+const props = withDefaults(defineProps<Props>(), {
+  taskId: undefined
+});
+
+// State
 const loading = ref(true);
+const saving = ref(false);
+const translationPages = ref<PageTranslation[]>([]);
+const pdfTimestamp = ref(Date.now());
 
-const editorOptions: editor.IStandaloneEditorConstructionOptions = {
-  automaticLayout: true,
-  formatOnType: true,
-  formatOnPaste: true,
-  wordWrap: 'on',
-  minimap: { enabled: false },
-  fontSize: 14,
-  lineNumbers: 'off' as const,
-  roundedSelection: false,
-  scrollBeyondLastLine: false
-};
+// Computed
+const pdfPreviewUrl = computed(() => {
+  if (!props.taskId) return '';
+  return `${import.meta.env.VITE_API_URL}/pdfs/download/translated/${props.taskId}?t=${pdfTimestamp.value}`;
+});
 
-const translatedPdfUrl = computed(() => 
-  currentTask.value?.id ? 
-  `${import.meta.env.VITE_API_URL}/pdfs/download/translated/${currentTask.value.id}` : 
-  ''
-);
-
-const handleMount = (editor: editor.IStandaloneCodeEditor) => {
-  editorRef.value = editor;
-  editor.onDidChangeModelContent(() => {
-    const value = editor.getValue();
-    editorContent.value = value;
-    try {
-      JSON.parse(value);
-      isValidJson.value = true;
-    } catch {
-      isValidJson.value = false;
-    }
-  });
-  loadTranslationData();
-};
-
+// Methods
 async function loadTranslationData() {
-  if (!currentTask.value?.id || !editorRef.value) {
-    console.log('Cannot load translation data:', {
-      taskId: currentTask.value?.id,
-      hasEditor: !!editorRef.value
-    });
+  if (!props.taskId) {
+    console.warn('No taskId provided to TranslationEditor');
+    loading.value = false;
     return;
   }
   
   loading.value = true;
   try {
-    const data = await getTranslationData(currentTask.value.id);
-    // Format data with pages structure
-    const formattedJson = JSON.stringify({
-      pages: data.pages.map(page => ({
-        page_number: page.page_number,
-        translations: page.translations.map(t => ({
-          id: t.id,
-          original_text: t.original_text,
-          translated_text: t.translated_text
-        }))
+    const data = await getTranslationData(props.taskId);
+    translationPages.value = data.pages.map(page => ({
+      page_number: page.page_number,
+      translations: page.translations.map(translation => ({
+        id: translation.id,
+        original_text: translation.original_text,
+        translated_text: translation.translated_text
       }))
-    }, null, 2);
-    editorContent.value = formattedJson;
-    editorRef.value.setValue(formattedJson);
-    editorRef.value.getAction('editor.action.formatDocument').run();
+    }));
   } catch (error) {
     console.error('Error loading translation data:', error);
-    alert('Error loading translation data');
+    alert('Error al cargar los datos de traducción');
   } finally {
     loading.value = false;
   }
 }
 
 async function saveChanges() {
-  if (!currentTask.value?.id || !isValidJson.value) return;
+  if (!props.taskId || saving.value) return;
   
-  loading.value = true;
+  saving.value = true;
   try {
-    const data = JSON.parse(editorContent.value);
-    
-    // Sanitize text content to handle special characters
-    const sanitizedPages = data.pages.map((page: any) => ({
-      page_number: page.page_number,
-      translations: page.translations.map((translation: any) => ({
-        id: translation.id,
-        original_text: translation.original_text.replace(/'/g, ""),
-        translated_text: translation.translated_text.replace(/'/g, "")
-      }))
-    }));
-
-    const translationData = {
-      pages: sanitizedPages
+    const translationData: TranslationData = {
+      pages: translationPages.value
     };
-
-    console.log('Saving translations:', translationData);
     
-    try {
-      // Save changes and wait for PDF regeneration
-      await updateTranslationData(currentTask.value.id, translationData);
-      console.log('Translation data updated and PDF regenerated');
-      
-      // Reload the PDF preview
-      const iframe = document.querySelector('.pdf-viewer iframe') as HTMLIFrameElement;
-      if (iframe) {
-        // Add timestamp to force reload and bypass cache
-        iframe.src = `${translatedPdfUrl.value}?t=${Date.now()}`;
-      }
-    } catch (error: any) {
-      console.error('Error updating translation:', error);
-      // Show error to user
-      const errorMessage = error.details?.message || 'Error updating translation';
-      alert(errorMessage);
-    }
+    await updateTranslationData(props.taskId, translationData);
+    
+    // Update PDF timestamp to force refresh
+    pdfTimestamp.value = Date.now();
+    
+    console.log('Translation data saved successfully');
   } catch (error) {
-    console.error('Error parsing JSON:', error);
-    alert('Error parsing JSON data');
+    console.error('Error saving translation data:', error);
+    alert('Error al guardar los cambios');
   } finally {
-    loading.value = false;
+    saving.value = false;
   }
 }
 
-// Watch for changes in currentTask
-watch(() => currentTask.value?.id, (newId) => {
-  if (newId && editorRef.value) {
+// Watch for taskId changes and load data immediately when available
+watch(() => props.taskId, (newTaskId, oldTaskId) => {
+  if (newTaskId && newTaskId !== oldTaskId) {
+    loadTranslationData();
+  }
+}, { immediate: true });
+
+// Lifecycle - also try to load data on mount in case taskId is already available
+onMounted(() => {
+  if (props.taskId) {
     loadTranslationData();
   }
 });
@@ -211,7 +193,6 @@ watch(() => currentTask.value?.id, (newId) => {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  position: relative;
 }
 
 .subtitle {
@@ -222,39 +203,22 @@ watch(() => currentTask.value?.id, (newId) => {
   flex-shrink: 0;
 }
 
-.monaco-wrapper {
-  flex: 1;
-  border-radius: 12px;
-  border: 2px solid #e9ecef;
-  background: #1e1e1e;
-  position: relative;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.loading-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+.loading-state, .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  z-index: 100;
-  color: white;
+  flex: 1;
+  text-align: center;
+  color: #495057;
 }
 
 .loading-spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid rgba(255, 255, 255, 0.3);
+  border: 3px solid rgba(34, 139, 230, 0.3);
   border-radius: 50%;
-  border-top-color: white;
+  border-top-color: #228be6;
   animation: spin 1s linear infinite;
   margin-bottom: 1rem;
 }
@@ -265,42 +229,113 @@ watch(() => currentTask.value?.id, (newId) => {
   }
 }
 
+.translations-container {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-group {
+  margin-bottom: 2rem;
+}
+
+.page-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #228be6;
+  margin: 0 0 1rem 0;
+  padding: 0.5rem;
+  background: rgba(34, 139, 230, 0.1);
+  border-radius: 6px;
+  border-left: 4px solid #228be6;
+}
+
+.translation-item {
+  background: white;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid #e9ecef;
+  transition: box-shadow 0.2s ease;
+}
+
+.translation-item:hover {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.original-text, .translated-text {
+  margin-bottom: 0.75rem;
+}
+
+.translated-text {
+  margin-bottom: 0;
+}
+
+.text-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #495057;
+  margin-bottom: 0.25rem;
+}
+
+.text-display {
+  background: #f8f9fa;
+  padding: 0.5rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: #495057;
+  border: 1px solid #e9ecef;
+  word-wrap: break-word;
+}
+
+.text-input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  resize: vertical;
+  min-height: 60px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: #228be6;
+  box-shadow: 0 0 0 2px rgba(34, 139, 230, 0.1);
+}
+
 .pdf-viewer {
   flex: 1;
   border: 2px solid #e9ecef;
   border-radius: 12px;
   overflow: hidden;
   background: white;
-  position: relative;
   min-height: 0;
-  height: calc(100% - 3rem); /* Account for title and padding */
-}
-
-.pdf-viewer iframe {
-  height: 100%;
 }
 
 .editor-actions {
   margin-top: 1rem;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  position: relative;
-  z-index: 50;
+  padding-top: 1rem;
+  border-top: 1px solid #e9ecef;
   flex-shrink: 0;
 }
 
 .save-button {
-  padding: 0.5rem 1rem;
+  width: 100%;
+  padding: 0.875rem;
   background: linear-gradient(45deg, #228be6, #15aabf);
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  position: relative;
-  z-index: 50;
+  font-size: 0.9375rem;
 }
 
 .save-button:hover:not(:disabled) {
@@ -309,14 +344,34 @@ watch(() => currentTask.value?.id, (newId) => {
 }
 
 .save-button:disabled {
-  opacity: 0.5;
+  opacity: 0.6;
   cursor: not-allowed;
+  transform: none;
 }
 
-.error-message {
-  color: #e03131;
-  font-size: 0.875rem;
-  position: relative;
-  z-index: 50;
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .editor-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+  
+  .editor-container {
+    height: calc(100vh - 60px);
+  }
+}
+
+@media (max-width: 768px) {
+  .editor-container {
+    padding: 0.5rem;
+  }
+  
+  .editor-section, .preview-section {
+    padding: 0.75rem;
+  }
+  
+  .translation-item {
+    padding: 0.75rem;
+  }
 }
 </style>
