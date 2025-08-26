@@ -8,7 +8,7 @@
         <div class="controls-container">
           <div class="nav-actions">
             <a
-              href="https://github.com/pbl0/pdf_translate_vue"
+              href="https://github.com/pablocpas/pdf_translate_vue"
               target="_blank"
               rel="noopener noreferrer"
               class="btn-github"
