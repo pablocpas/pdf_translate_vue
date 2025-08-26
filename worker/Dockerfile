@@ -1,61 +1,66 @@
-FROM python:3.9-slim-bullseye as builder
+# Etapa 1: Builder - Instala las dependencias
+FROM python:3.10-slim-bullseye as builder
 
+# Instala dependencias del sistema necesarias para compilar algunas librerías de Python.
+# Git y wget ya no son necesarios para instalar dependencias del modelo.
 RUN apt-get update && apt-get install -y \
-    wget \
-    git \
     gcc \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY . .
 
+# Copia solo el archivo de requisitos para aprovechar el cache de Docker
 COPY requirements.txt .
 
-# Install PyTorch first
-RUN pip install --user --no-cache-dir \
-    torch==1.10 torchvision==0.11.1 -f https://download.pytorch.org/whl/cpu/torch_stable.html
+# 1. Instalar PyTorch para CPU (Paso CRÍTICO)
+# Se usa el índice específico de PyTorch para garantizar que no se instale la versión con CUDA.
+RUN pip install --no-cache-dir --user \
+    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 
-# Install requirements.txt
-RUN pip install --user --no-cache-dir -r requirements.txt
+# 2. Instalar el resto de las dependencias desde requirements.txt
+# Esto incluye doclayout-yolo, opencv, etc.
+RUN pip install --no-cache-dir --user -r requirements.txt
 
-RUN git clone https://github.com/facebookresearch/detectron2 detectron2_repo
-RUN pip install --user ./detectron2_repo
+# NOTA: Ya no es necesario clonar detectron2 ni descargar modelos con wget.
+# El modelo de doclayout-yolo se descargará y cacheará la primera vez que se ejecute la aplicación.
 
-# Download models with new directory structure
-RUN mkdir -p models/primalayout && \
-    wget -O models/primalayout/model_final.pth https://www.dropbox.com/s/h7th27jfv19rxiy/model_final.pth?dl=1 && \
-    wget -O models/primalayout/config.yaml https://www.dropbox.com/s/yc92x97k50abynt/config.yaml?dl=1
 
-RUN mkdir -p models/publaynet && \
-    wget -O models/publaynet/model_final.pth https://huggingface.co/truefoundry/layout-parser/resolve/main/mask_rcnn_X_101_32x8d_FPN_3x.pth && \
-    wget -O models/publaynet/config.yaml https://huggingface.co/truefoundry/layout-parser/resolve/main/mask_rcnn_X_101_32x8d_FPN_3x.yml
+# Etapa 2: Runtime - La imagen final y optimizada
+FROM python:3.10-slim-bullseye
 
-# Runtime stage
-FROM python:3.9-slim-bullseye
-
-# Runtime dependencies
+# Instala dependencias de tiempo de ejecución que necesita la aplicación (ej: para procesar PDFs e imágenes)
+# opencv-python se instala vía pip, por lo que python3-opencv ya no es necesario.
 RUN apt-get update && apt-get install -y \
-    python3-opencv \
+    libgl1 \
     poppler-utils \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user and required directories
+# Crea un usuario no-root para mejorar la seguridad
 RUN useradd --create-home appuser
 WORKDIR /app
 
-# Create required directories with correct permissions
+# Crea directorios necesarios con los permisos correctos
 RUN mkdir -p /app/uploads /app/translated && \
     chown -R appuser:appuser /app/uploads /app/translated
 
+# Cambia al usuario no-root
 USER appuser
 
-# Copy installed packages and models
+# Copia los paquetes de Python instalados en la etapa de builder
+# El destino es el home del nuevo usuario
 COPY --from=builder --chown=appuser /root/.local /home/appuser/.local
-COPY --from=builder --chown=appuser /app/models ./models
+
+# Copia el código de la aplicación
 COPY --chown=appuser . .
 
+# Añade el directorio de binarios del usuario al PATH
 ENV PATH="/home/appuser/.local/bin:${PATH}"
 
+# NOTA IMPORTANTE: El modelo se descargará en /home/appuser/.cache/huggingface/hub la primera vez que se use.
+# Este caché se perderá si el contenedor se reinicia. Para producción, podrías querer
+# montar este directorio como un volumen o "pre-calentar" el caché durante la construcción de la imagen.
+
+# Comando para iniciar la aplicación
 CMD ["celery", "-A", "tasks", "worker", "--loglevel=info"]
