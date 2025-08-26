@@ -20,7 +20,7 @@
             <button
               v-for="page in translationPages"
               :key="page.page_number"
-              :class="['page-tab', { 'active': page.page_number === currentPage + 1 }]"
+              :class="['page-tab', { 'active': currentPage === page.page_number + 1 }]"
               @click="setCurrentPage(page.page_number + 1)"
             >
               Pág {{ page.page_number + 1 }}
@@ -32,7 +32,7 @@
             <div 
               v-for="page in translationPages" 
               :key="page.page_number"
-              v-show="page.page_number === currentPage + 1"
+              v-show="currentPage === page.page_number + 1"
               class="page-group"
             >
               <!-- El título de la página ahora es estático arriba, se puede quitar si se prefiere -->
