@@ -35,16 +35,19 @@ class LayoutElement(NamedTuple):
 # Mapeo de las clases del modelo YOLO a los tipos que usábamos ("TextRegion", "ImageRegion")
 # DocLayout-YOLO detecta más clases, las agrupamos según su naturaleza.
 YOLO_LABEL_MAP = {
-    'text': 'TextRegion',
-    'title': 'TextRegion',
-    'list': 'TextRegion',
-    'table': 'ImageRegion', # Podrías manejar tablas de forma diferente si quisieras
-    'figure': 'ImageRegion',
-    'page-header': 'TextRegion',
-    'page-footer': 'TextRegion',
-    'section-header': 'TextRegion',
-    'equation': 'TextRegion',
-    'toc': 'TextRegion'
+    'plain text': 'TextRegion',     # Párrafos de texto
+    'title': 'TextRegion',          # Títulos
+    'list': 'TextRegion',           # Listas
+    'table': 'ImageRegion',          # Tratamos las tablas como texto para OCR/traducción
+    'figure': 'ImageRegion',        # Figuras o imágenes
+    'header': 'TextRegion',         # Encabezados de página
+    'footer': 'TextRegion',         # Pies de página
+    'section-header': 'TextRegion', # Encabezados de sección
+    'figure caption': 'TextRegion', # Leyendas de figuras
+    'table caption': 'TextRegion',  # Leyendas de tablas
+    'formula': 'ImageRegion',        # Fórmulas (pueden ser tratadas como imagen si el OCR falla)
+    'toc': 'TextRegion',            # Tabla de contenidos
+    # 'abandon' se ignora intencionadamente porque suele ser ruido o elementos irrelevantes.
 }
 
 # Configuración del modelo YOLOv10 a cargar desde Hugging Face Hub
@@ -114,7 +117,7 @@ def get_layout(image: Image.Image, model_type="yolov10_doc") -> List[LayoutEleme
         # Por simplicidad, el ejemplo de la librería usa rutas, pero se puede adaptar para numpy.
         det_results = model.predict(
             source=image,
-            conf=0.25,
+            conf=0.4,
             device="cpu"  # Cambiar a "cuda:0" si tienes una GPU disponible
         )
 
@@ -146,53 +149,35 @@ def get_layout(image: Image.Image, model_type="yolov10_doc") -> List[LayoutEleme
 
 def merge_overlapping_text_regions(layout: List[LayoutElement]) -> Tuple[List[Tuple[Rectangle, str]], List[Tuple[LayoutElement, str]]]:
     """
-    Fusiona regiones de texto superpuestas y separa las regiones de imagen.
+    [VERSIÓN MODIFICADA - SIN FUSIÓN]
+    Separa las regiones de texto y de imagen del layout detectado.
+    La fusión con unary_union ha sido desactivada, ya que el modelo YOLOv10
+    suele generar bloques de texto coherentes que no necesitan ser fusionados.
 
     Args:
         layout (List[LayoutElement]): Layout detectado por el modelo.
 
     Returns:
-        Tuple[List[Tuple[Rectangle, str]], List[Tuple[LayoutElement, str]]]: 
+        Tuple[List[Tuple[Rectangle, str]], List[Tuple[LayoutElement, str]]]:
             Una tupla con:
-            1. Regiones de texto fusionadas como (Rectangle, "TextRegion").
+            1. Regiones de texto originales como (Rectangle, "TextRegion").
             2. Regiones de imagen originales como (LayoutElement, "ImageRegion").
     """
-    # Extraer regiones de texto e imagen
-    text_boxes = [
-        box(*element.box)
+    logger.info("Separando regiones de texto e imagen sin fusionar.")
+    
+    # Simplemente extraemos las regiones de texto y las devolvemos con el formato esperado.
+    # El formato de retorno para texto es List[Tuple[Rectangle, str]]
+    text_regions = [
+        (element.box, "TextRegion")
         for element in layout
         if element.type == "TextRegion"
     ]
-    images = [element for element in layout if element.type == "ImageRegion"]
 
-    if not text_boxes:
-        return [], [(img, "ImageRegion") for img in images]
+    # El formato para imágenes es List[Tuple[LayoutElement, str]]
+    image_regions = [
+        (element, "ImageRegion")
+        for element in layout
+        if element.type == "ImageRegion"
+    ]
 
-    # Fusionar regiones de texto superpuestas
-    merged_text_polygons = unary_union(text_boxes)
-    new_text_regions = []
-
-    def extract_polygons(geometry):
-        """
-        Extrae polígonos individuales de una geometría, manejando Polygon, MultiPolygon y GeometryCollection.
-        """
-        if isinstance(geometry, Polygon):
-            return [geometry]
-        elif isinstance(geometry, MultiPolygon):
-            return list(geometry.geoms)
-        elif isinstance(geometry, GeometryCollection):
-            polygons = []
-            for geom in geometry.geoms:
-                polygons.extend(extract_polygons(geom))
-            return polygons
-        else:
-            return []
-
-    polygons = extract_polygons(merged_text_polygons)
-
-    for polygon in polygons:
-        minx, miny, maxx, maxy = polygon.bounds
-        new_text_regions.append((Rectangle(minx, miny, maxx, maxy), "TextRegion"))
-
-    # Retornar regiones de texto fusionadas y imágenes
-    return new_text_regions, [(img, "ImageRegion") for img in images]
+    return text_regions, image_regions

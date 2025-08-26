@@ -60,51 +60,58 @@ def get_font_for_language(target_language: str) -> str:
 # 3. La tarea `combine_pages_task` en `tasks.py`: Que se encarga de ensamblar el PDF
 #    final a partir de los datos estructurados.
 
+# Añade esta constante al principio del archivo processor.py o dentro de la función
+OCR_MARGIN_PERCENT = 0.02  # 2% de margen
+
 def extract_and_translate_page_data(image_path: str, target_language: str, model_type: str) -> Dict[str, Any]:
     """
     Procesa una sola imagen de página para extraer, traducir y estructurar
     los datos necesarios para la reconstrucción del PDF, sin dibujar.
-    Esta función está diseñada para ser llamada por un worker de Celery.
-
-    Args:
-        image_path (str): Ruta a la imagen de la página.
-        target_language (str): Idioma de destino para la traducción.
-        model_type (str): Tipo de modelo de layout a usar ('primalayout' o 'publaynet').
-
-    Returns:
-        Dict[str, Any]: Un diccionario con los datos procesados de la página.
     """
     try:
         logger.info(f"Procesando datos para la imagen: {image_path}")
         page_image = Image.open(image_path).convert("RGB")
         
-        # Obtener dimensiones de página en puntos (para ReportLab)
         page_width_pts, page_height_pts = get_page_dimensions_from_image(image_path)
         
-        # Obtener layout y separar regiones de texto e imagen
         layout = get_layout(page_image, model_type)
         text_layout_regions, image_layout_regions = merge_overlapping_text_regions(layout)
 
-        # --- Procesar regiones de texto para extraer y traducir ---
         texts_to_translate = []
         region_metadata = []
         
         for rect, _ in text_layout_regions:
-            x1_px, y1_px, x2_px, y2_px = rect.coordinates
+            x1_px, y1_px, x2_px, y2_px = rect
 
-            # Calcular posición y tamaño en puntos
+            # --- NUEVA LÓGICA PARA AÑADIR MARGEN ---
+            box_width = x2_px - x1_px
+            box_height = y2_px - y1_px
+            
+            # Calcula el margen en píxeles
+            margin_x = box_width * OCR_MARGIN_PERCENT
+            margin_y = box_height * OCR_MARGIN_PERCENT
+            
+            # Expande las coordenadas
+            x1_expanded = x1_px - margin_x
+            y1_expanded = y1_px - margin_y
+            x2_expanded = x2_px + margin_x
+            y2_expanded = y2_px + margin_y
+            
+            # Asegúrate de que las coordenadas no se salgan de los límites de la imagen
+            x1_crop = max(0, x1_expanded)
+            y1_crop = max(0, y1_expanded)
+            x2_crop = min(page_image.width, x2_expanded)
+            y2_crop = min(page_image.height, y2_expanded)
+            # --- FIN DE LA NUEVA LÓGICA ---
+
             frame_x_pts = x1_px * (page_width_pts / page_image.width)
             frame_y_pts = (page_image.height - y2_px) * (page_height_pts / page_image.height)
             frame_width_pts = (x2_px - x1_px) * (page_width_pts / page_image.width)
             frame_height_pts = (y2_px - y1_px) * (page_height_pts / page_image.height)
 
-            # Recortar imagen para OCR
-            cropped_image = page_image.crop((
-                max(x1_px - MARGIN, 0),
-                max(y1_px - MARGIN, 0),
-                min(x2_px + MARGIN, page_image.width),
-                min(y2_px + MARGIN, page_image.height)
-            ))
+            # Recortar imagen para OCR usando las coordenadas expandidas
+            cropped_image = page_image.crop((x1_crop, y1_crop, x2_crop, y2_crop))
+            
             text = extract_text_from_image(cropped_image)
             clean_txt = clean_text(text)
 
@@ -114,7 +121,7 @@ def extract_and_translate_page_data(image_path: str, target_language: str, model
                     "position": {
                         "x": frame_x_pts, "y": frame_y_pts, "width": frame_width_pts, "height": frame_height_pts
                     },
-                    "coordinates": { # Coordenadas en píxeles originales
+                    "coordinates": {
                         "x1": x1_px, "y1": y1_px, "x2": x2_px, "y2": y2_px
                     }
                 })
@@ -135,10 +142,10 @@ def extract_and_translate_page_data(image_path: str, target_language: str, model
             logger.warning("La cantidad de traducciones no coincide con los textos originales. Saltando regiones de texto.")
 
 
-        # --- Procesar regiones de imagen para obtener sus datos de posición ---
         final_image_regions = []
         for i, (element, _) in enumerate(image_layout_regions):
-            x1_px, y1_px, x2_px, y2_px = element.coordinates
+            x1_px, y1_px, x2_px, y2_px = element.box
+            
             final_image_regions.append({
                 "id": i,
                 "position": {
@@ -158,14 +165,12 @@ def extract_and_translate_page_data(image_path: str, target_language: str, model
 
     except Exception as e:
         logger.error(f"Error al extraer datos de la página {image_path}: {e}", exc_info=True)
-        # Devolver una estructura vacía en caso de error para no romper el chord de Celery
         return {
             "text_regions": [],
             "image_regions": [],
-            "page_dimensions": {"width": A4[0], "height": A4[1]}, # Default a A4
+            "page_dimensions": {"width": A4[0], "height": A4[1]},
             "error": str(e)
         }
-
 
 def regenerate_pdf(output_pdf_path: str, translation_data: dict, position_data: dict, target_language: str) -> dict:
     """

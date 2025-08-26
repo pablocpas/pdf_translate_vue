@@ -20,7 +20,8 @@ pdf2image==1.17.0
 numpy==1.24.4
 boto3>=1.26.0
 botocore>=1.29.0
-pydantic
+pydantic>=2.0.0
+pydantic-settings
 pytesseract==0.3.13
 reportlab==4.2.5
 fvcore==0.1.5.post20221221
