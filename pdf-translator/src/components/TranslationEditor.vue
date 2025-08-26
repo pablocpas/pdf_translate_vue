@@ -3,7 +3,7 @@
     <div class="editor-grid">
       <!-- Panel Izquierdo: Editor de Textos -->
       <div class="editor-section">
-        <h3 class="subtitle">Editor de Traducciones</h3>
+        <h3 class="subtitle">Editor de traducciones</h3>
         
         <div v-if="loading" class="loading-state">
           <div class="loading-spinner"></div>
@@ -14,47 +14,68 @@
           <p>No se encontraron datos de traducción</p>
         </div>
         
-        <div v-else class="translations-container">
-          <div 
-            v-for="page in translationPages" 
-            :key="page.page_number"
-            class="page-group"
-          >
-            <h4 class="page-title">Página {{ page.page_number }}</h4>
-            
-            <div 
-              v-for="translation in page.translations"
-              :key="translation.id"
-              class="translation-item"
+        <div v-else class="editor-content">
+          <!-- 1. NAVEGADOR DE PÁGINAS -->
+          <div class="page-navigator">
+            <button
+              v-for="page in translationPages"
+              :key="page.page_number"
+              :class="['page-tab', { 'active': page.page_number === currentPage + 1 }]"
+              @click="setCurrentPage(page.page_number + 1)"
             >
-              <div class="original-text">
-                <label class="text-label">Texto Original:</label>
-                <div class="text-display">{{ translation.original_text }}</div>
-              </div>
-              
-              <div class="translated-text">
-                <label class="text-label" :for="`translation-${translation.id}`">
-                  Texto Traducido:
-                </label>
-                <textarea
-                  :id="`translation-${translation.id}`"
-                  v-model="translation.translated_text"
-                  class="text-input"
-                  rows="3"
-                  placeholder="Escriba la traducción aquí..."
-                />
+              Pág {{ page.page_number + 1 }}
+            </button>
+          </div>
+
+          <!-- 2. CONTENEDOR DE TRADUCCIONES CON SCROLL -->
+          <div class="translations-container">
+            <div 
+              v-for="page in translationPages" 
+              :key="page.page_number"
+              v-show="page.page_number === currentPage"
+              class="page-group"
+            >
+              <!-- El título de la página ahora es estático arriba, se puede quitar si se prefiere -->
+              <div 
+                v-for="translation in page.translations"
+                :key="translation.id"
+                class="translation-item"
+                :class="{ 'is-focused': focusedTranslationId === translation.id }"
+              >
+                <div class="original-text">
+                  <label class="text-label">Texto original:</label>
+                  <div class="text-display">{{ translation.original_text }}</div>
+                </div>
+                
+                <div class="translated-text">
+                  <label class="text-label" :for="`translation-${translation.id}`">
+                    Texto traducido:
+                  </label>
+                  <textarea
+                    :id="`translation-${translation.id}`"
+                    v-model="translation.translated_text"
+                    @input="markAsDirty"
+                    @focus="focusedTranslationId = translation.id"
+                    @blur="focusedTranslationId = null"
+                    class="text-input"
+                    rows="3"
+                    placeholder="Escriba la traducción aquí..."
+                  />
+                </div>
               </div>
             </div>
           </div>
           
+          <!-- 3. ACCIONES FLOTANTES (STICKY) -->
           <div class="editor-actions">
             <button 
               class="save-button"
-              :disabled="loading || saving"
+              :disabled="loading || saving || !hasChanges"
               @click="saveChanges"
             >
               <span v-if="saving">Guardando...</span>
-              <span v-else>Guardar Cambios</span>
+              <span v-else-if="hasChanges">Guardar cambios</span>
+              <span v-else>Guardado</span>
             </button>
           </div>
         </div>
@@ -62,7 +83,7 @@
 
       <!-- Panel Derecho: Visor PDF -->
       <div class="preview-section">
-        <h3 class="subtitle">Vista Previa del PDF</h3>
+        <h3 class="subtitle">Vista previa del PDF</h3>
         <div class="pdf-viewer">
           <iframe
             :src="pdfPreviewUrl"
@@ -74,11 +95,16 @@
         </div>
       </div>
     </div>
+
+    <!-- 4. Notificaciones (Toast) -->
+    <div v-if="notification.message" :class="['notification', notification.type]">
+      {{ notification.message }}
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, watch, reactive } from 'vue';
 import { getTranslationData, updateTranslationData } from '@/api/pdfs';
 import type { TranslationData, PageTranslation } from '@/types/schemas';
 
@@ -97,41 +123,61 @@ const saving = ref(false);
 const translationPages = ref<PageTranslation[]>([]);
 const pdfTimestamp = ref(Date.now());
 
+// --- NUEVOS ESTADOS PARA MEJORAR UX ---
+const currentPage = ref(1);
+const hasChanges = ref(false);
+const focusedTranslationId = ref<string | number | null>(null);
+const notification = reactive({ message: '', type: 'success' as 'success' | 'error', visible: false });
+
 // Computed
 const pdfPreviewUrl = computed(() => {
   if (!props.taskId) return '';
-  return `${import.meta.env.VITE_API_URL}/pdfs/download/translated/${props.taskId}?t=${pdfTimestamp.value}`;
+  // 5. NAVEGACIÓN EN EL PDF
+  const baseUrl = `${import.meta.env.VITE_API_URL}/pdfs/download/translated/${props.taskId}?t=${pdfTimestamp.value}`;
+  return `${baseUrl}#page=${currentPage.value}`;
 });
 
-// Methods
+// --- MÉTODOS MEJORADOS ---
+function setCurrentPage(pageNumber: number) {
+  currentPage.value = pageNumber;
+}
+
+function markAsDirty() {
+  hasChanges.value = true;
+}
+
+function showNotification(message: string, type: 'success' | 'error' = 'success', duration = 3000) {
+  notification.message = message;
+  notification.type = type;
+  setTimeout(() => {
+    notification.message = '';
+  }, duration);
+}
+
 async function loadTranslationData() {
   if (!props.taskId) {
-    console.warn('No taskId provided to TranslationEditor');
     loading.value = false;
     return;
   }
   
   loading.value = true;
+  hasChanges.value = false; // Resetear al cargar
   try {
     const data = await getTranslationData(props.taskId);
-    translationPages.value = data.pages.map(page => ({
-      page_number: page.page_number,
-      translations: page.translations.map(translation => ({
-        id: translation.id,
-        original_text: translation.original_text,
-        translated_text: translation.translated_text
-      }))
-    }));
+    translationPages.value = data.pages;
+    if (data.pages.length > 0) {
+      currentPage.value = data.pages[0].page_number; // Empezar en la primera página
+    }
   } catch (error) {
     console.error('Error loading translation data:', error);
-    alert('Error al cargar los datos de traducción');
+    showNotification('Error al cargar los datos de traducción', 'error');
   } finally {
     loading.value = false;
   }
 }
 
 async function saveChanges() {
-  if (!props.taskId || saving.value) return;
+  if (!props.taskId || saving.value || !hasChanges.value) return;
   
   saving.value = true;
   try {
@@ -141,40 +187,35 @@ async function saveChanges() {
     
     await updateTranslationData(props.taskId, translationData);
     
-    // Update PDF timestamp to force refresh
     pdfTimestamp.value = Date.now();
+    hasChanges.value = false; // Resetear estado de cambios
     
-    console.log('Translation data saved successfully');
+    showNotification('Cambios guardados con éxito', 'success');
   } catch (error) {
     console.error('Error saving translation data:', error);
-    alert('Error al guardar los cambios');
+    showNotification('Error al guardar los cambios', 'error');
   } finally {
     saving.value = false;
   }
 }
 
-// Watch for taskId changes and load data immediately when available
-watch(() => props.taskId, (newTaskId, oldTaskId) => {
-  if (newTaskId && newTaskId !== oldTaskId) {
+// Watchers
+watch(() => props.taskId, (newTaskId) => {
+  if (newTaskId) {
     loadTranslationData();
   }
 }, { immediate: true });
-
-// Lifecycle - also try to load data on mount in case taskId is already available
-onMounted(() => {
-  if (props.taskId) {
-    loadTranslationData();
-  }
-});
 </script>
 
 <style scoped>
+/* Estilos existentes... (copiados y pegados) */
 .editor-container {
   padding: 1rem;
-  height: calc(100vh - 80px);
+  height: calc(100vh - 80px); /* Ajusta según tu header */
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative; /* Para las notificaciones */
 }
 
 .editor-grid {
@@ -229,26 +270,51 @@ onMounted(() => {
   }
 }
 
+/* --- NUEVOS ESTILOS Y AJUSTES --- */
+
+.editor-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.page-navigator {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-shrink: 0;
+  overflow-x: auto; /* Para muchas páginas en móvil */
+  padding-bottom: 8px; /* Espacio para scrollbar */
+}
+
+.page-tab {
+  padding: 0.5rem 1rem;
+  border: 1px solid #dee2e6;
+  background-color: #fff;
+  border-radius: 20px;
+  cursor: pointer;
+  font-weight: 500;
+  color: #495057;
+  transition: all 0.2s ease;
+}
+
+.page-tab:hover {
+  background-color: #f1f3f5;
+  border-color: #ced4da;
+}
+
+.page-tab.active {
+  background-color: #228be6;
+  color: white;
+  border-color: #228be6;
+  font-weight: 600;
+}
+
 .translations-container {
   flex: 1;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
-
-.page-group {
-  margin-bottom: 2rem;
-}
-
-.page-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #228be6;
-  margin: 0 0 1rem 0;
-  padding: 0.5rem;
-  background: rgba(34, 139, 230, 0.1);
-  border-radius: 6px;
-  border-left: 4px solid #228be6;
+  padding-right: 8px; /* Evita que el scrollbar se pegue al contenido */
 }
 
 .translation-item {
@@ -257,20 +323,19 @@ onMounted(() => {
   padding: 1rem;
   margin-bottom: 1rem;
   border: 1px solid #e9ecef;
-  transition: box-shadow 0.2s ease;
+  transition: all 0.2s ease;
 }
 
-.translation-item:hover {
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+.translation-item.is-focused {
+  border-color: #228be6;
+  box-shadow: 0 0 0 3px rgba(34, 139, 230, 0.15);
 }
 
 .original-text, .translated-text {
   margin-bottom: 0.75rem;
 }
 
-.translated-text {
-  margin-bottom: 0;
-}
+.translated-text { margin-bottom: 0; }
 
 .text-label {
   display: block;
@@ -281,20 +346,19 @@ onMounted(() => {
 }
 
 .text-display {
-  background: #f8f9fa;
+  background: #f1f3f5;
   padding: 0.5rem;
   border-radius: 4px;
   font-size: 0.875rem;
   line-height: 1.4;
   color: #495057;
-  border: 1px solid #e9ecef;
   word-wrap: break-word;
 }
 
 .text-input {
   width: 100%;
   padding: 0.5rem;
-  border: 1px solid #e9ecef;
+  border: 1px solid #ced4da;
   border-radius: 4px;
   font-size: 0.875rem;
   line-height: 1.4;
@@ -315,7 +379,6 @@ onMounted(() => {
   border-radius: 12px;
   overflow: hidden;
   background: white;
-  min-height: 0;
 }
 
 .editor-actions {
@@ -323,12 +386,13 @@ onMounted(() => {
   padding-top: 1rem;
   border-top: 1px solid #e9ecef;
   flex-shrink: 0;
+  background-color: #f8f9fa; /* Para que no se vea el contenido al hacer scroll */
 }
 
 .save-button {
   width: 100%;
   padding: 0.875rem;
-  background: linear-gradient(45deg, #228be6, #15aabf);
+  background: #495057; /* Color por defecto (Guardado) */
   color: white;
   border: none;
   border-radius: 8px;
@@ -338,40 +402,48 @@ onMounted(() => {
   font-size: 0.9375rem;
 }
 
-.save-button:hover:not(:disabled) {
+/* Estilo para cuando hay cambios */
+.save-button:not(:disabled) {
+  background: linear-gradient(45deg, #228be6, #15aabf);
+}
+
+.save-button:not(:disabled):hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(34, 139, 230, 0.25);
 }
 
 .save-button:disabled {
-  opacity: 0.6;
+  opacity: 0.7;
   cursor: not-allowed;
   transform: none;
 }
 
-/* Responsive Design */
+/* Notificaciones */
+.notification {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 24px;
+  border-radius: 8px;
+  color: white;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  transition: opacity 0.3s ease;
+  z-index: 1000;
+}
+.notification.success {
+  background-color: #28a745;
+}
+.notification.error {
+  background-color: #dc3545;
+}
+
 @media (max-width: 1024px) {
   .editor-grid {
     grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1fr;
-  }
-  
-  .editor-container {
-    height: calc(100vh - 60px);
-  }
-}
-
-@media (max-width: 768px) {
-  .editor-container {
-    padding: 0.5rem;
-  }
-  
-  .editor-section, .preview-section {
-    padding: 0.75rem;
-  }
-  
-  .translation-item {
-    padding: 0.75rem;
+    grid-template-rows: auto auto; /* O 1fr 1fr si quieres dividir el espacio equitativamente */
+    min-height: 0;
   }
 }
 </style>
