@@ -32,7 +32,7 @@
             <div 
               v-for="page in translationPages" 
               :key="page.page_number"
-              v-show="page.page_number === currentPage"
+              v-show="page.page_number === currentPage + 1"
               class="page-group"
             >
               <!-- El título de la página ahora es estático arriba, se puede quitar si se prefiere -->
@@ -166,7 +166,7 @@ async function loadTranslationData() {
     const data = await getTranslationData(props.taskId);
     translationPages.value = data.pages;
     if (data.pages.length > 0) {
-      currentPage.value = data.pages[0].page_number; // Empezar en la primera página
+      currentPage.value = data.pages[0].page_number + 1; // Empezar en la primera página
     }
   } catch (error) {
     console.error('Error loading translation data:', error);
