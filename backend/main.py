@@ -150,105 +150,65 @@ async def translate_pdf_endpoint(
 async def get_task_status(task_id: str):
     """
     Obtiene el estado de una tarea de traducción.
+    Esta versión es más simple y robusta, confiando en el estado de Celery.
     """
     try:
-        # El task_id ahora ES el Celery ID directamente
         orchestrator_task = AsyncResult(task_id, app=celery_app)
-        
-        logger.info(f"Checking status for task {task_id}: state={orchestrator_task.state}")
         
         state = orchestrator_task.state
         info = orchestrator_task.info or {}
         
-        # Si el orquestador completó exitosamente, SIEMPRE verificar la tarea finalizadora
+        # Si la tarea orquestadora tuvo éxito, obtenemos la tarea final
         if state == 'SUCCESS' and isinstance(info, dict) and 'result_task_id' in info:
             final_task_id = info['result_task_id']
             final_task = AsyncResult(final_task_id, app=celery_app)
-            logger.info(f"Final task {final_task_id}: state={final_task.state}")
-            
-            # SIEMPRE usar el estado de la tarea finalizadora
             state = final_task.state
             info = final_task.info or {}
-            
-            # Si la tarea finalizadora aún está pendiente o en progreso, verificar si el PDF ya existe
-            if state in ['PENDING', 'PROGRESS']:
-                # FALLBACK: Verificar si el PDF ya se creó aunque la tarea parezca pendiente
-                logger.info(f"Final task appears {state}, checking if PDF exists as fallback")
-                translated_key = f"{task_id}/translated/translated.pdf"
-                if key_exists(translated_key):
-                    logger.info(f"PDF found despite task state {state}, marking as SUCCESS")
-                    state = 'SUCCESS'
-                    info = {'status': 'DONE', 'translated_key': translated_key}
-                else:
-                    state = 'PROGRESS'
-                    if not info:
-                        info = {'status': 'Finalizando traducción...'}
-        elif state == 'SUCCESS':
-            # Si no hay result_task_id, algo está mal - mantener en progreso
-            logger.warning(f"Orchestrator completed but no result_task_id found for {task_id}")
-            state = 'PROGRESS'
-            info = {'status': 'Procesando resultado...'}
         
-        logger.info(f"Final mapped state for {task_id}: {state}, info: {info}")
-        
-        # Mapear estados de Celery a nuestros estados
+        logger.info(f"Reportando estado para {task_id}: Celery state={state}, info={info}")
+
+        # Mapeo directo y simple de estados de Celery a nuestro enum
         if state == 'PENDING':
             status = TaskStatus.PENDING
             progress = TranslationProgress(step=ProcessingStep.QUEUED)
         elif state == 'PROGRESS':
             status = TaskStatus.PROCESSING
             step_text = info.get('status', 'Procesando...')
-            # Mapear texto a enum
-            if 'Convirtiendo' in step_text:
-                step = ProcessingStep.CONVERTING_PDF
-            elif 'paralelo' in step_text:
-                step = ProcessingStep.PROCESSING_PAGES
-            elif 'Ensamblando' in step_text or 'Reconstruyendo' in step_text:
-                step = ProcessingStep.COMBINING_PDF
-            else:
-                step = ProcessingStep.UNKNOWN
+            
+            # Mapear el texto del progreso al enum de Pydantic
+            step_map = {
+                "Convirtiendo PDF a imágenes": ProcessingStep.CONVERTING_PDF,
+                "Procesando páginas en paralelo": ProcessingStep.PROCESSING_PAGES,
+                "Ensamblando PDF final": ProcessingStep.COMBINING_PDF,
+                "Finalizando traducción...": ProcessingStep.COMBINING_PDF, # Reutilizamos, o podríamos añadir uno nuevo
+            }
+            # Encuentra el primer match o usa UNKNOWN
+            step = next((s for t, s in step_map.items() if t in step_text), ProcessingStep.UNKNOWN)
+            
             progress = TranslationProgress(step=step, details=step_text)
         elif state == 'SUCCESS':
-            # Verificar que el PDF traducido realmente existe antes de marcar como completado
-            # Usar el translated_key del resultado si está disponible
-            if isinstance(info, dict) and 'translated_key' in info:
-                translated_key = info['translated_key']
-                logger.info(f"Using translated_key from result: {translated_key}")
-            else:
-                translated_key = f"{task_id}/translated/translated.pdf"
-                logger.info(f"Using default translated_key: {translated_key}")
-            
-            if key_exists(translated_key):
-                status = TaskStatus.COMPLETED
-                progress = TranslationProgress(step=ProcessingStep.COMBINING_PDF)
-                logger.info(f"Task {task_id} confirmed complete - PDF exists in S3 at {translated_key}")
-            else:
-                # PDF no existe aún, mantener como procesando
-                logger.warning(f"Task {task_id} marked SUCCESS but PDF not found in S3 at {translated_key}, keeping as PROCESSING")
-                status = TaskStatus.PROCESSING
-                progress = TranslationProgress(step=ProcessingStep.COMBINING_PDF, details="Finalizando...")
-                state = 'PROGRESS'  # Override para logging
+            status = TaskStatus.COMPLETED
+            progress = None  # Ya no es necesario, el estado COMPLETED es suficiente
         elif state == 'FAILURE':
             status = TaskStatus.FAILED
             progress = None
-        else:
+            error_message = str(orchestrator_task.traceback) if orchestrator_task.traceback else "Error desconocido en la tarea."
+        else: # Otros estados de Celery (REVOKED, RETRY) se tratan como PROCESSING
             status = TaskStatus.PROCESSING
             progress = TranslationProgress(step=ProcessingStep.UNKNOWN)
         
-        # Construir respuesta
+        # Construir la respuesta final
         task_response = TranslationTask(
             id=task_id,
             status=status,
             progress=progress,
-            error=str(info.get('exc_message', '')) if state == 'FAILURE' else None,
+            error=error_message if status == TaskStatus.FAILED else None,
             originalFile=f"{task_id}/original.pdf",
             translatedFile=f"{task_id}/translated/translated.pdf" if status == TaskStatus.COMPLETED else None
         )
         
         return jsonable_encoder(task_response)
         
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error obteniendo estado de tarea {task_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")

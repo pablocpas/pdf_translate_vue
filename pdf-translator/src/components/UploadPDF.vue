@@ -128,7 +128,7 @@ const isProcessing = computed(() => {
 
 // Convierte el `step` de texto en un valor numérico para la UI
 const getStepProgress = (step: string | undefined): number => {
-  console.log('Current step:', step); // Debug
+  console.log('Current step:', step);
   switch(step) {
     case 'En cola': return 10;
     case 'Convirtiendo PDF a imágenes': return 30;
@@ -139,7 +139,7 @@ const getStepProgress = (step: string | undefined): number => {
     case 'Desconocido': return 5;
     default: 
       console.log('Unknown step, using 15%:', step);
-      return 15; // Estado inicial o desconocido
+      return 15;
   }
 };
 

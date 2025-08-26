@@ -7,13 +7,15 @@ export const processingStepSchema = z.enum([
   'Convirtiendo PDF a imágenes',
   'Procesando páginas en paralelo',
   'Ensamblando PDF final',
+  'Finalizando traducción...',
+  'Procesando resultado...',
   'Desconocido',
 ]);
 
 // 2. MODIFICADO: El esquema de progreso ahora refleja la nueva estructura.
 export const translationProgressSchema = z.object({
-  step: processingStepSchema, // Usa el nuevo enum
-  details: z.any().optional().nullable(), // 'details' puede ser cualquier cosa (texto, objeto, etc.) o no existir.
+  step: processingStepSchema, 
+  details: z.any().optional().nullable(),
 });
 
 // 3. MODIFICADO: El esquema de la tarea ahora usa el nuevo esquema de progreso.
