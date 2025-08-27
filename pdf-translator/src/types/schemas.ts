@@ -1,15 +1,13 @@
 import { z } from 'zod';
 
-// 1. NUEVO: Enum para los pasos de procesamiento que envía el backend.
-// Esto hace tu código más robusto.
+// 1. Enum para los pasos de procesamiento que envía el backend.
 export const processingStepSchema = z.enum([
-  'En cola',
-  'Convirtiendo PDF a imágenes',
-  'Procesando páginas en paralelo',
-  'Ensamblando PDF final',
-  'Finalizando traducción...',
-  'Procesando resultado...',
-  'Desconocido',
+  'Iniciando traducción',
+  'Preparando documento',
+  'Analizando páginas',
+  'Traduciendo contenido',
+  'Finalizando documento',
+  'Procesando',
 ]);
 
 // 2. MODIFICADO: El esquema de progreso ahora refleja la nueva estructura.

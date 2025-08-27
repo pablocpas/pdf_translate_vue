@@ -117,6 +117,9 @@ const errors = reactive<Errors>({ model: '', file: '', targetLanguage: '', gener
 const isSubmitting = ref(false); // Para el estado de subida inicial
 const pollingInterval = ref<number | null>(null);
 const currentTask = ref<TranslationTask | null>(null);
+const lastProgress = ref<number>(0);
+const simulatedProgress = ref<number>(0);
+const progressInterval = ref<number | null>(null);
 
 // --- Computed Properties ---
 
@@ -128,28 +131,52 @@ const isProcessing = computed(() => {
 
 // Convierte el `step` de texto en un valor numérico para la UI
 const getStepProgress = (step: string | undefined): number => {
-  console.log('Current step:', step);
-  switch(step) {
-    case 'En cola': return 10;
-    case 'Convirtiendo PDF a imágenes': return 30;
-    case 'Procesando páginas en paralelo': return 60;
-    case 'Ensamblando PDF final': return 90;
-    case 'Finalizando traducción...': return 95;
-    case 'Procesando resultado...': return 85;
-    case 'Desconocido': return 5;
-    default: 
-      console.log('Unknown step, using 15%:', step);
-      return 15;
-  }
+  const stepProgressMap: Record<string, number> = {
+    'Iniciando traducción': 5,
+    'Preparando documento': 10,
+    'Analizando páginas': 25,
+    'Traduciendo contenido': 45,
+    'Finalizando documento': 85,
+    'Procesando': 20
+  };
+  
+  return stepProgressMap[step || 'Procesando'] || 20;
 };
 
 const numericProgress = computed(() => {
-  if (currentTask.value?.status === 'COMPLETED') return 100;
-  if (currentTask.value?.status === 'PROCESSING') {
-    return getStepProgress(currentTask.value.progress?.step);
+  if (!currentTask.value) return 0;
+  
+  let baseProgress: number;
+  
+  switch (currentTask.value.status) {
+    case 'COMPLETED':
+      baseProgress = 100;
+      break;
+    case 'PROCESSING':
+      baseProgress = getStepProgress(currentTask.value.progress?.step);
+      break;
+    case 'PENDING':
+      baseProgress = 5;
+      break;
+    case 'FAILED':
+      baseProgress = 0;
+      break;
+    default:
+      baseProgress = 0;
   }
-  if (currentTask.value?.status === 'PENDING') return 5;
-  return 0;
+  
+  // Durante la traducción, usar progreso simulado para suavidad
+  if (currentTask.value.progress?.step === 'Traduciendo contenido' && simulatedProgress.value > baseProgress) {
+    baseProgress = Math.min(simulatedProgress.value, 75); // Máximo 75% en simulación
+  }
+  
+  // Prevenir regresiones excepto para casos específicos
+  if (baseProgress < lastProgress.value && baseProgress !== 0 && baseProgress !== 100) {
+    baseProgress = Math.max(baseProgress, lastProgress.value);
+  }
+  
+  lastProgress.value = baseProgress;
+  return baseProgress;
 });
 
 const currentStepText = computed(() => {
@@ -171,6 +198,7 @@ onUnmounted(() => {
   if (pollingInterval.value) {
     clearInterval(pollingInterval.value);
   }
+  stopProgressSimulation();
 });
 
 // --- Funciones y Lógica ---
@@ -194,8 +222,6 @@ const validate = (): boolean => {
 const mutation = useMutation({
   mutationFn: (formData: FormData) => uploadPdf(formData),
   onSuccess: (data) => {
-    // ANTES: Se creaba una tarea local.
-    // DESPUÉS: Se inicia el polling inmediatamente con el taskId.
     startPolling(data.taskId);
   },
   onError: (error: Error) => {
@@ -203,31 +229,59 @@ const mutation = useMutation({
   },
 });
 
+const startProgressSimulation = (step: string) => {
+  if (step !== 'Traduciendo contenido') return;
+  
+  if (progressInterval.value) clearInterval(progressInterval.value);
+  
+  simulatedProgress.value = 45; // Comenzar desde el valor base
+  progressInterval.value = window.setInterval(() => {
+    if (simulatedProgress.value < 75) {
+      simulatedProgress.value += Math.random() * 2; // Incremento aleatorio lento
+    }
+  }, 1500);
+};
+
+const stopProgressSimulation = () => {
+  if (progressInterval.value) {
+    clearInterval(progressInterval.value);
+    progressInterval.value = null;
+  }
+};
+
 const startPolling = (taskId: string) => {
   if (pollingInterval.value) clearInterval(pollingInterval.value);
 
   pollingInterval.value = window.setInterval(async () => {
     try {
       const taskStatus = await getTranslationStatus(taskId);
-      console.log('Polling status:', taskStatus); // Debug
-      currentTask.value = taskStatus; // Actualiza la tarea local
-      translationStore.setCurrentTask(taskStatus); // Actualiza la store global
+      const previousStep = currentTask.value?.progress?.step;
+      currentTask.value = taskStatus;
+      translationStore.setCurrentTask(taskStatus);
+
+      // Manejar progreso simulado
+      if (taskStatus.progress?.step === 'Traduciendo contenido' && previousStep !== 'Traduciendo contenido') {
+        startProgressSimulation('Traduciendo contenido');
+      } else if (taskStatus.progress?.step !== 'Traduciendo contenido') {
+        stopProgressSimulation();
+      }
 
       if (taskStatus.status === 'COMPLETED') {
-        console.log('Task completed, redirecting to result');
+        stopProgressSimulation();
         clearInterval(pollingInterval.value!);
         router.push('/result');
       } else if (taskStatus.status === 'FAILED') {
-        console.log('Task failed:', taskStatus.error);
+        stopProgressSimulation();
         clearInterval(pollingInterval.value!);
         errors.general = taskStatus.error || 'Error en la traducción';
         errors.code = ErrorCode.TRANSLATION_FAILED;
       }
     } catch (error) {
       handleApiError(error as Error, 'Error al consultar el estado de la traducción');
+      stopProgressSimulation();
       clearInterval(pollingInterval.value!);
     }
-  }, 2000); // Polling cada 2 segundos
+  }, 2000);
 };
 
 const handleApiError = (error: Error, defaultMessage = 'Error inesperado. Por favor, intenta de nuevo.') => {
@@ -253,27 +307,29 @@ const handleRetry = () => {
 const handleSubmit = async () => {
   if (!validate()) return;
   
-  // Limpiar estado anterior
+  // Reset state
   currentTask.value = null;
   translationStore.clearCurrentTask();
+  lastProgress.value = 0;
+  simulatedProgress.value = 0;
   errors.general = '';
   errors.code = undefined;
   
-  // Limpiar cualquier polling previo
+  // Clear previous intervals
   if (pollingInterval.value) {
     clearInterval(pollingInterval.value);
     pollingInterval.value = null;
   }
+  stopProgressSimulation();
   
   isSubmitting.value = true;
   
   const formData = new FormData();
   formData.append('file', form.file!);
-  formData.append('tgtLang', form.targetLanguage); // Corregir nombre parámetro
-  formData.append('modelType', form.model); // Corregir nombre parámetro
+  formData.append('tgtLang', form.targetLanguage);
+  formData.append('modelType', form.model);
   
   await mutation.mutateAsync(formData);
-
   isSubmitting.value = false;
 };
 </script>

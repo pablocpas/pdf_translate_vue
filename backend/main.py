@@ -44,11 +44,12 @@ class TaskStatus(str, Enum):
     FAILED = "FAILED"
 
 class ProcessingStep(str, Enum):
-    QUEUED = "En cola"
-    CONVERTING_PDF = "Convirtiendo PDF a imágenes"
-    PROCESSING_PAGES = "Procesando páginas en paralelo"
-    COMBINING_PDF = "Ensamblando PDF final"
-    UNKNOWN = "Desconocido"
+    QUEUED = "Iniciando traducción"
+    UPLOADING_PDF = "Preparando documento"
+    CONVERTING_PDF = "Analizando páginas"
+    PROCESSING_PAGES = "Traduciendo contenido"
+    COMBINING_PDF = "Finalizando documento"
+    UNKNOWN = "Procesando"
 
 class TranslationProgress(BaseModel):
     step: ProcessingStep = ProcessingStep.QUEUED
@@ -162,8 +163,18 @@ async def get_task_status(task_id: str):
         if state == 'SUCCESS' and isinstance(info, dict) and 'result_task_id' in info:
             final_task_id = info['result_task_id']
             final_task = AsyncResult(final_task_id, app=celery_app)
-            state = final_task.state
-            info = final_task.info or {}
+            final_state = final_task.state
+            final_info = final_task.info or {}
+            
+            # Mantener progreso durante transición - si la tarea final está PENDING,
+            # mantener el progreso de la orquestadora
+            if final_state == 'PENDING':
+                # Mantener estado de procesamiento con traducción de contenido
+                state = 'PROGRESS'
+                info = {'status': 'Traduciendo contenido'}
+            else:
+                state = final_state
+                info = final_info
         
         logger.info(f"Reportando estado para {task_id}: Celery state={state}, info={info}")
 
@@ -177,10 +188,10 @@ async def get_task_status(task_id: str):
             
             # Mapear el texto del progreso al enum de Pydantic
             step_map = {
-                "Convirtiendo PDF a imágenes": ProcessingStep.CONVERTING_PDF,
-                "Procesando páginas en paralelo": ProcessingStep.PROCESSING_PAGES,
-                "Ensamblando PDF final": ProcessingStep.COMBINING_PDF,
-                "Finalizando traducción...": ProcessingStep.COMBINING_PDF, # Reutilizamos, o podríamos añadir uno nuevo
+                "Preparando documento": ProcessingStep.UPLOADING_PDF,
+                "Analizando páginas": ProcessingStep.CONVERTING_PDF,
+                "Traduciendo contenido": ProcessingStep.PROCESSING_PAGES,
+                "Finalizando documento": ProcessingStep.COMBINING_PDF,
             }
             # Encuentra el primer match o usa UNKNOWN
             step = next((s for t, s in step_map.items() if t in step_text), ProcessingStep.UNKNOWN)

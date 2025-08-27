@@ -138,7 +138,7 @@ def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lan
         logger.info(f"Iniciando orquestación S3 para tarea {task_id} -> {tgt_lang}")
         
         # 1. Subir PDF original a S3
-        self.update_state(state='PROGRESS', meta={'status': 'Subiendo PDF...'})
+        self.update_state(state='PROGRESS', meta={'status': 'Preparando documento'})
         original_key = f"{task_id}/original.pdf"
         upload_bytes(original_key, file_content, content_type="application/pdf")
         logger.info(f"PDF subido a S3: {original_key}")
@@ -147,7 +147,7 @@ def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lan
         pdf_bytes = file_content
         
         # 2. Convertir PDF a imágenes
-        self.update_state(state='PROGRESS', meta={'status': 'Convirtiendo PDF a imágenes...'})
+        self.update_state(state='PROGRESS', meta={'status': 'Analizando páginas'})
         images = convert_from_bytes(pdf_bytes, fmt="png", dpi=300)
         
         if not images:
@@ -165,7 +165,7 @@ def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lan
         logger.info(f"Subidas {len(page_keys)} imágenes a S3")
         
         # 4. Lanzar procesamiento paralelo con chord
-        self.update_state(state='PROGRESS', meta={'status': 'Iniciando procesamiento paralelo...'})
+        self.update_state(state='PROGRESS', meta={'status': 'Traduciendo contenido'})
         
         job = group(
             process_page_task.s(task_id, i, key, src_lang, tgt_lang, model_type) 
@@ -248,7 +248,7 @@ def finalize_task(self, results_list: List[Dict[str, Any]], task_id: str, origin
         # 1. Ordenar resultados por número de página
         results_list.sort(key=lambda r: r.get("page_number", 0))
         
-        self.update_state(state='PROGRESS', meta={'status': 'Reconstruyendo PDF traducido...'})
+        self.update_state(state='PROGRESS', meta={'status': 'Finalizando documento'})
         
         # 2. Construir PDF traducido
         translated_pdf_bytes = build_translated_pdf(results_list, task_id, tgt_lang)
