@@ -44,9 +44,7 @@ apiClient.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${store.token}`;
   }
   
-  if (translationStore.selectedModel && config.data instanceof FormData) {
-    config.data.append('model', translationStore.selectedModel);
-  }
+  // Ya no necesitamos esto ya que los datos del modelo se envían directamente desde UploadPDF.vue
   return config;
 });
 

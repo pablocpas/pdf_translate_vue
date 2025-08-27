@@ -48,7 +48,7 @@ YOLO_LABEL_MAP = {
     'table_footnote': 'TextRegion',  # Leyendas de tablas
     'isolate_formula': 'ImageRegion',
     'formula_caption': 'TextRegion',       # Fórmulas (pueden ser tratadas como imagen si el OCR falla)
-    # 'abandon' se ignora intencionadamente porque suele ser ruido o elementos irrelevantes.
+    'abandon': 'ImageRegion',
 }
 
 # Configuración del modelo YOLOv10 a cargar desde Hugging Face Hub
@@ -99,7 +99,7 @@ class LayoutModel:
         return self.model
 
 
-def get_layout(image: Image.Image, model_type="yolov10_doc") -> List[LayoutElement]:
+def get_layout(image: Image.Image, model_type="yolov10_doc", confidence: float = 0.45) -> List[LayoutElement]:
     """
     Obtiene el layout de una imagen usando el modelo YOLOv10 especificado.
     
@@ -118,7 +118,7 @@ def get_layout(image: Image.Image, model_type="yolov10_doc") -> List[LayoutEleme
         # Por simplicidad, el ejemplo de la librería usa rutas, pero se puede adaptar para numpy.
         det_results = model.predict(
             source=image,
-            conf=0.6,
+            conf=confidence,
             device="cpu"  # Cambiar a "cuda:0" si tienes una GPU disponible
         )
 

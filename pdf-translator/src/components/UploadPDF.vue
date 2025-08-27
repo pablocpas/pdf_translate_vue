@@ -13,9 +13,9 @@
           :error="errors.file"
         />
 
-        <ModelSelect
-          v-model="form.model"
-          :error="errors.model"
+        <ConfigurationPanel
+          v-model="form.config"
+          :errors="{ languageModel: errors.config }"
           class="form-section"
         />
 
@@ -78,10 +78,10 @@ import { useMutation } from '@tanstack/vue-query';
 import { z } from 'zod';
 import { useTranslationStore } from '@/stores/translationStore';
 import { uploadPdf, getTranslationStatus } from '@/api/pdfs';
-import { ModelType, type TranslationTask } from '@/types';
+import type { TranslationTask, TranslationConfig, LanguageModelType } from '@/types';
 import { ApiRequestError, NetworkError, ErrorCode } from '@/types/api';
 import FileUploader from './FileUploader.vue';
-import ModelSelect from './ModelSelect.vue';
+import ConfigurationPanel from './ConfigurationPanel.vue';
 import LanguageSelect from './LanguageSelect.vue';
 import ErrorBanner from './ErrorBanner.vue';
 import ProgressCircle from './ProgressCircle.vue';
@@ -93,26 +93,34 @@ const translationStore = useTranslationStore();
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = ['application/pdf'];
 const schema = z.object({
-  model: z.custom<ModelType>((val): val is ModelType => val === 'primalayout' || val === 'publaynet', { message: 'Por favor selecciona un modelo válido' }),
+  config: z.object({
+    languageModel: z.custom<LanguageModelType>((val): val is LanguageModelType => 
+      val === 'openai/gpt-4o-mini' || val === 'openai/gpt-5-mini' || val === 'deepseek/deepseek-chat-v3.1' || val === 'meta-llama/llama-3.3-70b-instruct', 
+      { message: 'Por favor selecciona un modelo de lenguaje válido' }),
+    confidence: z.number().min(0.1).max(0.9)
+  }),
   file: z.custom<File>((file) => file instanceof File && ALLOWED_MIME_TYPES.includes(file.type) && file.size <= MAX_FILE_SIZE, { message: `Por favor selecciona un archivo PDF de menos de ${MAX_FILE_SIZE / 1024 / 1024}MB` }),
   targetLanguage: z.string().min(1, 'Por favor selecciona un idioma'),
 });
 
 // --- Estado del Componente ---
 const form = reactive({
-  model: translationStore.selectedModel as ModelType,
+  config: {
+    languageModel: 'openai/gpt-4o-mini' as LanguageModelType,
+    confidence: 0.45
+  } as TranslationConfig,
   file: null as File | null,
   targetLanguage: 'es',
 });
 
 interface Errors {
-  model: string;
+  config: string;
   file: string;
   targetLanguage: string;
   general: string;
   code?: ErrorCode;
 }
-const errors = reactive<Errors>({ model: '', file: '', targetLanguage: '', general: '', code: undefined });
+const errors = reactive<Errors>({ config: '', file: '', targetLanguage: '', general: '', code: undefined });
 
 const isSubmitting = ref(false); // Para el estado de subida inicial
 const pollingInterval = ref<number | null>(null);
@@ -204,12 +212,12 @@ onUnmounted(() => {
 // --- Funciones y Lógica ---
 
 const validate = (): boolean => {
-  errors.model = ''; errors.file = ''; errors.targetLanguage = ''; errors.general = ''; errors.code = undefined;
+  errors.config = ''; errors.file = ''; errors.targetLanguage = ''; errors.general = ''; errors.code = undefined;
   const result = schema.safeParse(form);
   if (!result.success) {
     result.error.errors.forEach((error) => {
       const path = error.path[0] as keyof typeof errors;
-      if (path === 'model' || path === 'file' || path === 'targetLanguage') {
+      if (path === 'config' || path === 'file' || path === 'targetLanguage') {
         errors[path] = error.message;
       }
     });
@@ -327,7 +335,8 @@ const handleSubmit = async () => {
   const formData = new FormData();
   formData.append('file', form.file!);
   formData.append('tgtLang', form.targetLanguage);
-  formData.append('modelType', form.model);
+  formData.append('languageModel', form.config.languageModel);
+  formData.append('confidence', form.config.confidence.toString());
   
   await mutation.mutateAsync(formData);
   isSubmitting.value = false;

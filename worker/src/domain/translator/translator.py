@@ -54,7 +54,7 @@ LANGUAGE_MAP = {
 class TranslationResponse(BaseModel):
     translations: List[str]
 
-def translate_text(texts: List[str], target_language: str) -> List[str]:
+def translate_text(texts: List[str], target_language: str, language_model: str = "openai/gpt-4o-mini") -> List[str]:
     """
     Translates a list of texts into the specified language using
     OpenAI's Structured Outputs feature. It ensures the model
@@ -91,7 +91,7 @@ def translate_text(texts: List[str], target_language: str) -> List[str]:
     try:
         # Llamada con response_format para forzar la estructura devuelta.
         response = client.beta.chat.completions.parse(
-            model=GPT_MODEL,
+            model=language_model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}

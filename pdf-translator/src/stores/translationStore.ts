@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { ModelType } from '@/types';
+import type { TranslationConfig } from '@/types';
 import { translationTaskSchema, type TranslationTask } from '@/types/schemas';
 
 const MAX_HISTORY_SIZE = 10;
@@ -15,11 +15,14 @@ export const useTranslationStore = defineStore('translation', () => {
   // Main state
   const currentTask = ref<TranslationTask | null>(loadFromStorage('currentTask'));
   const taskHistory = ref<TranslationTask[]>(loadFromStorage('taskHistory') || []);
-  const selectedModel = ref<ModelType>(loadFromStorage('selectedModel') || 'primalayout');
+  const translationConfig = ref<TranslationConfig>(loadFromStorage('translationConfig') || {
+    languageModel: 'openai/gpt-4o-mini',
+    confidence: 0.45
+  });
 
-  function setSelectedModel(model: ModelType): void {
-    selectedModel.value = model;
-    saveToStorage('selectedModel', model);
+  function setTranslationConfig(config: TranslationConfig): void {
+    translationConfig.value = config;
+    saveToStorage('translationConfig', config);
   }
 
   function saveToStorage(key: string, value: any): void {
@@ -91,7 +94,7 @@ export const useTranslationStore = defineStore('translation', () => {
   return {
     currentTask,
     taskHistory,
-    selectedModel,
+    translationConfig,
     setCurrentTask,
     clearCurrentTask,
     clearHistory,
@@ -99,6 +102,6 @@ export const useTranslationStore = defineStore('translation', () => {
     hasError,
     isCompleted,
     lastCompletedTask,
-    setSelectedModel
+    setTranslationConfig
   };
 });

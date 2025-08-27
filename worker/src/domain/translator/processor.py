@@ -61,9 +61,9 @@ def get_font_for_language(target_language: str) -> str:
 #    final a partir de los datos estructurados.
 
 # Añade esta constante al principio del archivo processor.py o dentro de la función
-OCR_MARGIN_PERCENT = 0.01  # 2% de margen
+OCR_MARGIN_PERCENT = 0.015  # 2% de margen
 
-def extract_and_translate_page_data(image_path: str, target_language: str, model_type: str) -> Dict[str, Any]:
+def extract_and_translate_page_data(image_path: str, target_language: str, language_model: str, confidence: float) -> Dict[str, Any]:
     """
     Procesa una sola imagen de página para extraer, traducir y estructurar
     los datos necesarios para la reconstrucción del PDF, sin dibujar.
@@ -74,7 +74,7 @@ def extract_and_translate_page_data(image_path: str, target_language: str, model
         
         page_width_pts, page_height_pts = get_page_dimensions_from_image(image_path)
         
-        layout = get_layout(page_image, model_type)
+        layout = get_layout(page_image, confidence=confidence)
         text_layout_regions, image_layout_regions = merge_overlapping_text_regions(layout)
 
         texts_to_translate = []
@@ -126,7 +126,7 @@ def extract_and_translate_page_data(image_path: str, target_language: str, model
                     }
                 })
         
-        translated_texts = translate_text(texts_to_translate, target_language)
+        translated_texts = translate_text(texts_to_translate, target_language, language_model)
 
         final_text_regions = []
         if len(translated_texts) == len(texts_to_translate):

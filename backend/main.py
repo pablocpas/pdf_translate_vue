@@ -118,13 +118,14 @@ async def translate_pdf_endpoint(
     file: UploadFile = File(...),
     srcLang: str = Form("auto"),
     tgtLang: str = Form("es"),
-    modelType: str = Form("primalayout")
+    languageModel: str = Form("openai/gpt-4o-mini"),
+    confidence: float = Form(0.45)
 ):
     """
     Endpoint para subir PDF y iniciar traducción usando S3/MinIO.
     """
     try:
-        logger.info(f"Iniciando traducción: {file.filename} ({srcLang} -> {tgtLang})")
+        logger.info(f"Iniciando traducción: {file.filename} ({srcLang} -> {tgtLang}) con modelo {languageModel} y confianza {confidence}")
         
         # Validar archivo
         if not file.filename.lower().endswith('.pdf'):
@@ -133,8 +134,8 @@ async def translate_pdf_endpoint(
         # Leer contenido del archivo
         file_content = await file.read()
         
-        # Lanzar tarea de orquestación S3 PRIMERO para obtener el ID de Celery
-        result = celery_app.send_task('translate_pdf_orchestrator', args=[file_content, srcLang, tgtLang, modelType])
+        # Lanzar tarea de orquestación con los nuevos parámetros
+        result = celery_app.send_task('translate_pdf_orchestrator', args=[file_content, srcLang, tgtLang, languageModel, confidence])
         
         # Usar el ID de Celery como task_id único para todo
         task_id = result.id

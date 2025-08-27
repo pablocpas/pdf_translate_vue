@@ -39,7 +39,7 @@ celery_app = Celery(
     backend=os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
 )
 
-def process_page_with_existing_pipeline(page_image: Image.Image, src_lang: str, tgt_lang: str, model_type: str) -> Dict[str, Any]:
+def process_page_with_existing_pipeline(page_image: Image.Image, src_lang: str, tgt_lang: str, language_model: str, confidence: float) -> Dict[str, Any]:
     """
     Wrapper para el pipeline existente que procesa una página.
     Convierte objeto Image PIL a archivo temporal para usar con extract_and_translate_page_data.
@@ -50,8 +50,8 @@ def process_page_with_existing_pipeline(page_image: Image.Image, src_lang: str, 
         temp_path = temp_file.name
     
     try:
-        # Usar el pipeline existente
-        result = extract_and_translate_page_data(temp_path, tgt_lang, model_type)
+        # Usar el pipeline existente con los nuevos parámetros
+        result = extract_and_translate_page_data(temp_path, tgt_lang, language_model, confidence)
         return result
     finally:
         # Limpiar archivo temporal
@@ -128,7 +128,7 @@ def build_translated_pdf(results_list: List[Dict[str, Any]], task_id: str, targe
     return buffer.getvalue()
 
 @celery_app.task(name='translate_pdf_orchestrator', bind=True)
-def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lang: str, model_type: str = "primalayout"):
+def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lang: str, language_model: str = "openai/gpt-4o-mini", confidence: float = 0.45):
     """
     Tarea orquestadora que recibe PDF bytes, sube a S3, convierte a imágenes y lanza procesamiento paralelo.
     """
@@ -168,7 +168,7 @@ def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lan
         self.update_state(state='PROGRESS', meta={'status': 'Traduciendo contenido'})
         
         job = group(
-            process_page_task.s(task_id, i, key, src_lang, tgt_lang, model_type) 
+            process_page_task.s(task_id, i, key, src_lang, tgt_lang, language_model, confidence) 
             for i, key in enumerate(page_keys)
         )
         
@@ -198,7 +198,7 @@ def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lan
     retry_backoff=True,                    # Espera exponencial entre reintentos (e.g., 1s, 2s, 4s)
     retry_backoff_max=60                   # Espera máxima de 60 segundos
 )
-def process_page_task(self, task_id: str, page_number: int, image_key: str, src_lang: str, tgt_lang: str, model_type: str):
+def process_page_task(self, task_id: str, page_number: int, image_key: str, src_lang: str, tgt_lang: str, language_model: str, confidence: float):
     """
     Tarea worker: descarga imagen de S3, procesa página y devuelve resultados.
     """
@@ -210,7 +210,7 @@ def process_page_task(self, task_id: str, page_number: int, image_key: str, src_
         page_image = Image.open(BytesIO(img_bytes)).convert("RGB")
         
         # 2. Procesar página con pipeline existente
-        result = process_page_with_existing_pipeline(page_image, src_lang, tgt_lang, model_type)
+        result = process_page_with_existing_pipeline(page_image, src_lang, tgt_lang, language_model, confidence)
         
         # 3. Añadir número de página
         result["page_number"] = page_number
