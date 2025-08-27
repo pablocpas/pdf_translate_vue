@@ -61,7 +61,7 @@ def get_font_for_language(target_language: str) -> str:
 #    final a partir de los datos estructurados.
 
 # Añade esta constante al principio del archivo processor.py o dentro de la función
-OCR_MARGIN_PERCENT = 0.02  # 2% de margen
+OCR_MARGIN_PERCENT = 0.01  # 2% de margen
 
 def extract_and_translate_page_data(image_path: str, target_language: str, model_type: str) -> Dict[str, Any]:
     """
