@@ -40,13 +40,14 @@ YOLO_LABEL_MAP = {
     'list': 'TextRegion',           # Listas
     'table': 'ImageRegion',          # Tratamos las tablas como texto para OCR/traducción
     'figure': 'ImageRegion',        # Figuras o imágenes
-    'header': 'TextRegion',         # Encabezados de página
-    'footer': 'TextRegion',         # Pies de página
+    #'header': 'TextRegion',         # Encabezados de página
+    #'footer': 'TextRegion',         # Pies de página
     'section-header': 'TextRegion', # Encabezados de sección
-    'figure caption': 'TextRegion', # Leyendas de figuras
-    'table caption': 'TextRegion',  # Leyendas de tablas
-    'formula': 'ImageRegion',        # Fórmulas (pueden ser tratadas como imagen si el OCR falla)
-    'toc': 'TextRegion',            # Tabla de contenidos
+    'figure_caption': 'TextRegion', # Leyendas de figuras
+    'table_caption': 'TextRegion',
+    'table_footnote': 'TextRegion',  # Leyendas de tablas
+    'isolate_formula': 'ImageRegion',
+    'formula_caption': 'TextRegion',       # Fórmulas (pueden ser tratadas como imagen si el OCR falla)
     # 'abandon' se ignora intencionadamente porque suele ser ruido o elementos irrelevantes.
 }
 
@@ -117,7 +118,7 @@ def get_layout(image: Image.Image, model_type="yolov10_doc") -> List[LayoutEleme
         # Por simplicidad, el ejemplo de la librería usa rutas, pero se puede adaptar para numpy.
         det_results = model.predict(
             source=image,
-            conf=0.4,
+            conf=0.6,
             device="cpu"  # Cambiar a "cuda:0" si tienes una GPU disponible
         )
 
