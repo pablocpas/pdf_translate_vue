@@ -74,7 +74,8 @@ services:
     environment:
       - MINIO_ROOT_USER=minioadmin
       - MINIO_ROOT_PASSWORD=minioadmin
-      - MINIO_BROWSER_REDIRECT_URL=${DOMAIN:-http://localhost}/minio/
+      - MINIO_SERVER_URL=${DOMAIN}minio
+      - MINIO_BROWSER_REDIRECT_URL=${DOMAIN}minio/
     command: server /data --console-address ":9001" --address ":9000"
     volumes:
       - minio_data:/data
