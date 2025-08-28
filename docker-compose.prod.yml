@@ -8,7 +8,7 @@ x-common-env: &common-env
   AWS_REGION: us-east-1
   AWS_S3_BUCKET: pdf-translator-bucket
   AWS_S3_ENDPOINT_URL: http://minio:9000
-  AWS_S3_PUBLIC_ENDPOINT_URL: ${DOMAIN:-http://localhost}/minio
+  AWS_S3_PUBLIC_ENDPOINT_URL: http://minio:9000
   AWS_S3_USE_SSL: false
   TRANSLATED_TTL_DAYS: 7
 
@@ -38,6 +38,7 @@ services:
       <<: *common-env
       UPLOAD_FOLDER: /app/uploads
       TRANSLATED_FOLDER: /app/translated
+      PUBLIC_DOMAIN: ${DOMAIN:-http://localhost}
     depends_on:
       - redis
       - minio
@@ -73,11 +74,8 @@ services:
     environment:
       - MINIO_ROOT_USER=minioadmin
       - MINIO_ROOT_PASSWORD=minioadmin
-      # Allow requests from proxy
       - MINIO_BROWSER_REDIRECT_URL=${DOMAIN:-http://localhost}/minio/
-      # Configure MinIO to accept proxy headers
-      - MINIO_SERVER_URL=${DOMAIN:-http://localhost}/minio
-    command: server /data --console-address ":9001"
+    command: server /data --console-address ":9001" --address ":9000"
     volumes:
       - minio_data:/data
     healthcheck:

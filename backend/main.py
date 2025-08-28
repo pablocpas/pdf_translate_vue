@@ -252,7 +252,14 @@ async def get_translated_pdf(task_id: str):
             content_type="application/pdf"
         )
         
+        # Reescribir la URL para usar el proxy de nginx
+        if "minio:9000" in url:
+            # Obtener el dominio desde las headers de la request
+            public_domain = os.getenv('PUBLIC_DOMAIN', 'http://localhost')
+            url = url.replace("http://minio:9000", f"{public_domain}/minio")
+        
         logger.info(f"URL prefirmada generada para {task_id} -> {translated_key}")
+        logger.info(f"URL reescrita: {url}")
         
         return RedirectResponse(url=url)
 
@@ -284,7 +291,13 @@ async def get_original_pdf(task_id: str):
             content_type="application/pdf"
         )
         
+        # Reescribir la URL para usar el proxy de nginx
+        if "minio:9000" in url:
+            public_domain = os.getenv('PUBLIC_DOMAIN', 'http://localhost')
+            url = url.replace("http://minio:9000", f"{public_domain}/minio")
+        
         logger.info(f"URL prefirmada generada para PDF original {task_id} -> {original_key}")
+        logger.info(f"URL reescrita: {url}")
         
         return RedirectResponse(url=url)
         
