@@ -122,48 +122,35 @@ def presigned_get_url(
     content_type: str = "application/pdf"
 ) -> str:
     """
-    Generate a presigned URL for downloading an object, ensuring the
-    signature is calculated against the public-facing endpoint.
+    Genera una URL S3 prefirmada. 
+    Se apoya en la variable de entorno MINIO_SERVER_URL para que MinIO construya
+    la URL pública correcta de forma automática.
     """
     try:
-        # Determinar el endpoint correcto para la generación de la URL.
-        # Usar el endpoint público si está definido, de lo contrario, usar el interno.
-        presign_endpoint_url = settings.AWS_S3_PUBLIC_ENDPOINT_URL or settings.AWS_S3_ENDPOINT_URL
-
-        # Crear un cliente S3 dedicado SOLO para generar esta URL prefirmada.
-        # Esto es crucial para que la firma se calcule con el endpoint correcto (el público).
-        presign_client = boto3.client(
-            "s3",
-            region_name=settings.AWS_REGION,
-            endpoint_url=presign_endpoint_url,
-            use_ssl=settings.AWS_S3_USE_SSL,
-            config=Config(
-                signature_version="s3v4",
-                s3={'addressing_style': 'path'}
-            ),
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-        )
-
-        params = {"Bucket": settings.AWS_S3_BUCKET, "Key": key}
-        
-        # Cabeceras para forzar la visualización en el navegador en lugar de la descarga
-        response_headers = {
-            "ResponseContentType": content_type,
-            "ResponseContentDisposition": f'inline; filename="{inline_filename or key.split("/")[-1]}"'
+        params = {
+            "Bucket": settings.AWS_S3_BUCKET,
+            "Key": key
         }
+        
+        if inline_filename:
+            # Parámetros para forzar la visualización en el navegador
+            params["ResponseContentType"] = content_type
+            params["ResponseContentDisposition"] = f'inline; filename="{inline_filename}"'
 
-        url = presign_client.generate_presigned_url(
+        # Usamos el cliente global. Él habla con http://minio:9000.
+        # MinIO, al recibir la petición, usará su configuración para devolver
+        # una URL que apunta al dominio público.
+        public_url = _client.generate_presigned_url(
             "get_object",
-            Params={**params, **response_headers},
+            Params=params,
             ExpiresIn=expires
         )
 
-        logger.info(f"Generated presigned URL with endpoint {presign_endpoint_url} for {key}")
-        return url
+        logger.info(f"URL pública generada por MinIO para {key}: {public_url}")
+        return public_url
 
     except Exception as e:
-        logger.error(f"Error generating presigned URL for {key}: {e}")
+        logger.error(f"Error generando URL prefirmada para {key}: {e}", exc_info=True)
         raise
 
 def list_keys(prefix: str = "") -> list[str]:
