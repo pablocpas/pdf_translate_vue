@@ -4,7 +4,6 @@ import axios, {
   InternalAxiosRequestConfig,
   AxiosRequestConfig 
 } from 'axios';
-import { useAuthStore } from '@/stores/authStore';
 import { useTranslationStore } from '@/stores/translationStore';
 import { ApiErrorSchema, ApiRequestError, AuthenticationError, NetworkError } from '@/types/api';
 
@@ -35,16 +34,8 @@ const apiClient = axios.create({
   ],
 });
 
-// Interceptor para añadir token de autenticación
+// Request interceptor for common configuration
 apiClient.interceptors.request.use((config) => {
-  const store = useAuthStore();
-  const translationStore = useTranslationStore();
-  
-  if (store.token) {
-    config.headers.Authorization = `Bearer ${store.token}`;
-  }
-  
-  // Ya no necesitamos esto ya que los datos del modelo se envían directamente desde UploadPDF.vue
   return config;
 });
 
@@ -97,8 +88,6 @@ apiClient.interceptors.response.use(
       console.log('Parsed error:', parsedError);
 
       if (status === 401) {
-        const authStore = useAuthStore();
-        authStore.clearToken();
         throw new AuthenticationError(parsedError.message);
       }
 

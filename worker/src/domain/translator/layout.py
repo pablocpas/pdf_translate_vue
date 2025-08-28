@@ -118,7 +118,7 @@ def get_layout(image: Image.Image, model_type="yolov10_doc", confidence: float =
         det_results = model.predict(
             source=image,
             conf=confidence,
-            device="cpu"  # Cambiar a "cuda:0" si tienes una GPU disponible
+            device="cpu"
         )
 
         layout = []

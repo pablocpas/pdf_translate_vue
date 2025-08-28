@@ -331,22 +331,6 @@ def finalize_task(self, results_list: List[Dict[str, Any]], task_id: str, origin
         return {"status": "failed", "error": str(e)}
 
 
-# Mantener tareas existentes para compatibilidad hacia atrás (pueden ser eliminadas gradualmente)
-@celery_app.task(name='translate_pdf', bind=True)
-def translate_pdf_legacy(self, pdf_path: str, task_id: str, target_language: str = "es", model_type: str = "primalayout"):
-    """
-    LEGACY: Redirige a la nueva implementación S3.
-    Esta función será eliminada una vez completada la migración.
-    """
-    logger.warning(f"Usando implementación legacy para tarea {task_id}. Considera migrar a S3.")
-    
-    # Subir PDF local a S3 y usar nueva implementación
-    original_key = f"{task_id}/original.pdf"
-    with open(pdf_path, 'rb') as f:
-        upload_bytes(original_key, f.read(), content_type="application/pdf")
-    
-    # Delegar a nueva implementación
-    return celery_app.send_task('translate_pdf_orchestrator', args=[task_id, original_key, "auto", target_language, model_type])
 
 
 @celery_app.task(name='regenerate_pdf_s3')

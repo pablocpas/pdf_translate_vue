@@ -27,14 +27,6 @@ celery_app = Celery(
     backend=os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
 )
 
-# Mantener directorios locales para compatibilidad hacia atrás
-UPLOAD_DIR = Path(os.getenv('UPLOAD_FOLDER', '/app/uploads'))
-TRANSLATED_DIR = Path(os.getenv('TRANSLATED_FOLDER', '/app/translated'))
-UPLOAD_DIR.mkdir(exist_ok=True)
-TRANSLATED_DIR.mkdir(exist_ok=True)
-
-logger.info(f"Upload directory: {UPLOAD_DIR}")
-logger.info(f"Translated directory: {TRANSLATED_DIR}")
 # --- Modelos Pydantic ---
 
 class TaskStatus(str, Enum):
@@ -416,36 +408,6 @@ async def regenerate_pdf_endpoint(
         logger.error(f"Error regenerando PDF para {task_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
-# --- ENDPOINTS DE COMPATIBILIDAD HACIA ATRÁS ---
-
-@app.get("/pdfs/original/{task_id}")
-async def get_original_pdf_legacy(task_id: str):
-    """
-    LEGACY: Devuelve URL del PDF original desde S3.
-    """
-    try:
-        original_key = f"{task_id}/original.pdf"
-        
-        if not key_exists(original_key):
-            # Intentar con archivo local como fallback
-            local_path = UPLOAD_DIR / f"{task_id}.pdf"
-            if local_path.exists():
-                return FileResponse(str(local_path), media_type="application/pdf")
-            raise HTTPException(status_code=404, detail="PDF original no encontrado")
-        
-        url = presigned_get_url(
-            original_key,
-            expires=3600,
-            inline_filename=f"{task_id}_original.pdf"
-        )
-        
-        return {"url": url}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error obteniendo PDF original para {task_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 @app.get("/")
 async def root():

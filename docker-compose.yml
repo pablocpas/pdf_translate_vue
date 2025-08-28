@@ -1,5 +1,17 @@
 version: '3.8'
 
+x-common-env: &common-env
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/0
+  AWS_ACCESS_KEY_ID: minioadmin
+  AWS_SECRET_ACCESS_KEY: minioadmin
+  AWS_REGION: us-east-1
+  AWS_S3_BUCKET: pdf-translator-bucket
+  AWS_S3_ENDPOINT_URL: http://minio:9000
+  AWS_S3_PUBLIC_ENDPOINT_URL: http://localhost:9000
+  AWS_S3_USE_SSL: false
+  TRANSLATED_TTL_DAYS: 7
+
 services:
   frontend:
     build:
@@ -21,20 +33,10 @@ services:
     volumes:
       - ./uploads:/app/uploads
       - ./translated:/app/translated
-      - ./backend/main.py:/app/main.py
     environment:
-      - UPLOAD_FOLDER=/app/uploads
-      - TRANSLATED_FOLDER=/app/translated
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - AWS_ACCESS_KEY_ID=minioadmin
-      - AWS_SECRET_ACCESS_KEY=minioadmin
-      - AWS_REGION=us-east-1
-      - AWS_S3_BUCKET=pdf-translator-bucket
-      - AWS_S3_ENDPOINT_URL=http://minio:9000
-      - AWS_S3_PUBLIC_ENDPOINT_URL=http://localhost:9000
-      - AWS_S3_USE_SSL=false
-      - TRANSLATED_TTL_DAYS=7
+      <<: *common-env
+      UPLOAD_FOLDER: /app/uploads
+      TRANSLATED_FOLDER: /app/translated
     depends_on:
       - redis
       - minio
@@ -46,22 +48,10 @@ services:
     volumes:
       - ./uploads:/app/uploads
       - ./translated:/app/translated
-      - ./worker/tasks.py:/app/tasks.py
-      - ./worker/src:/app/src
-
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - TRANSLATED_FOLDER=/app/translated
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - AWS_ACCESS_KEY_ID=minioadmin
-      - AWS_SECRET_ACCESS_KEY=minioadmin
-      - AWS_REGION=us-east-1
-      - AWS_S3_BUCKET=pdf-translator-bucket
-      - AWS_S3_ENDPOINT_URL=http://minio:9000
-      - AWS_S3_PUBLIC_ENDPOINT_URL=http://localhost:9000
-      - AWS_S3_USE_SSL=false
-      - TRANSLATED_TTL_DAYS=7
+      <<: *common-env
+      TRANSLATED_FOLDER: /app/translated
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
     depends_on:
       - redis
       - minio

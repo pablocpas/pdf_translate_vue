@@ -18,13 +18,6 @@
               </svg>
               GitHub
             </a>
-            <button
-              v-if="authStore.token"
-              class="btn-logout"
-              @click="authStore.clearToken"
-            >
-              Cerrar sesión
-            </button>
           </div>
         </div>
       </div>
@@ -43,8 +36,6 @@
 </template>
 
 <script setup lang="ts">
-import { useAuthStore } from '@/stores/authStore';
-const authStore = useAuthStore();
 </script>
 
 <style scoped>
