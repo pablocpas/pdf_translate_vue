@@ -8,7 +8,7 @@ x-common-env: &common-env
   AWS_REGION: us-east-1
   AWS_S3_BUCKET: pdf-translator-bucket
   AWS_S3_ENDPOINT_URL: http://minio:9000
-  AWS_S3_PUBLIC_ENDPOINT_URL: ${DOMAIN}/minio
+  AWS_S3_PUBLIC_ENDPOINT_URL: ${DOMAIN:-http://localhost}/minio
   AWS_S3_USE_SSL: false
   TRANSLATED_TTL_DAYS: 7
 
