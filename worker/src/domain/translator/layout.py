@@ -4,9 +4,9 @@ from PIL import Image
 
 # Nuevas dependencias
 from doclayout_yolo import YOLOv10
-from huggingface_hub import hf_hub_download
 from shapely.geometry import box, Polygon, MultiPolygon, GeometryCollection
 from shapely.ops import unary_union
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +51,10 @@ YOLO_LABEL_MAP = {
     'abandon': 'ImageRegion',
 }
 
-# Configuración del modelo YOLOv10 a cargar desde Hugging Face Hub
+# Configuración del modelo YOLOv10 local (pre-descargado en la imagen Docker)
 YOLO_MODEL_CONFIG = {
     "yolov10_doc": {
-        "repo_id": "juliozhao/DocLayout-YOLO-DocStructBench",
-        "filename": "doclayout_yolo_docstructbench_imgsz1024.pt"
+        "local_path": "/app/models/doclayout_yolo_docstructbench_imgsz1024.pt"
     }
 }
 
@@ -71,24 +70,24 @@ class LayoutModel:
         return cls._instances[model_type]
 
     def _initialize_model(self, model_type):
-        """Inicializa el modelo YOLOv10 con la configuración específica."""
+        """Inicializa el modelo YOLOv10 usando el archivo local pre-descargado."""
         try:
             if model_type not in YOLO_MODEL_CONFIG:
                 logger.warning(f"Modelo {model_type} no encontrado, usando yolov10_doc")
                 model_type = "yolov10_doc"
 
             config = YOLO_MODEL_CONFIG[model_type]
+            local_path = config['local_path']
             
-            logger.info(f"Descargando el modelo {model_type} desde Hugging Face Hub...")
-            filepath = hf_hub_download(
-                repo_id=config['repo_id'],
-                filename=config['filename']
-            )
+            # Verificar que el archivo local existe
+            if not os.path.exists(local_path):
+                raise FileNotFoundError(f"El modelo no se encuentra en {local_path}. "
+                                      "Asegúrate de que la imagen Docker se construyó correctamente.")
             
-            logger.info("Inicializando el modelo YOLOv10...")
-            self.model = YOLOv10(filepath)
+            logger.info(f"Cargando modelo {model_type} desde archivo local: {local_path}")
+            self.model = YOLOv10(local_path)
             self.model_type = model_type
-            logger.info(f"Modelo {model_type} cargado correctamente")
+            logger.info(f"Modelo {model_type} cargado correctamente desde archivo local")
             
         except Exception as e:
             logger.error(f"Error cargando el modelo {model_type}: {e}")

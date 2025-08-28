@@ -2,10 +2,11 @@
 FROM python:3.10-slim-bullseye as builder
 
 # Instala dependencias del sistema necesarias para compilar algunas librerías de Python.
-# Git y wget ya no son necesarios para instalar dependencias del modelo.
+# Incluimos wget para descargar el modelo YOLO.
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -22,8 +23,11 @@ RUN pip install --no-cache-dir --user \
 # Esto incluye doclayout-yolo, opencv, etc.
 RUN pip install --no-cache-dir --user -r requirements.txt
 
-# NOTA: Ya no es necesario clonar detectron2 ni descargar modelos con wget.
-# El modelo de doclayout-yolo se descargará y cacheará la primera vez que se ejecute la aplicación.
+# 3. Descargar el modelo YOLO directamente durante la construcción
+# Esto evita la descarga en tiempo de ejecución y mejora el rendimiento
+RUN mkdir -p /tmp/models && \
+    wget -O /tmp/models/doclayout_yolo_docstructbench_imgsz1024.pt \
+    https://huggingface.co/juliozhao/DocLayout-YOLO-DocStructBench/resolve/main/doclayout_yolo_docstructbench_imgsz1024.pt
 
 
 # Etapa 2: Runtime - La imagen final y optimizada
@@ -42,8 +46,10 @@ RUN useradd --create-home appuser
 WORKDIR /app
 
 # Crea directorios necesarios con los permisos correctos
-RUN mkdir -p /app/uploads /app/translated && \
-    chown -R appuser:appuser /app/uploads /app/translated
+RUN mkdir -p /app/uploads /app/translated /app/models && \
+    chown -R appuser:appuser /app/uploads /app/translated /app/models
+
+COPY --from=builder --chown=appuser /tmp/models/doclayout_yolo_docstructbench_imgsz1024.pt /app/models/
 
 # Cambia al usuario no-root
 USER appuser
@@ -57,10 +63,5 @@ COPY --chown=appuser . .
 
 # Añade el directorio de binarios del usuario al PATH
 ENV PATH="/home/appuser/.local/bin:${PATH}"
-
-# NOTA IMPORTANTE: El modelo se descargará en /home/appuser/.cache/huggingface/hub la primera vez que se use.
-# Este caché se perderá si el contenedor se reinicia. Para producción, podrías querer
-# montar este directorio como un volumen o "pre-calentar" el caché durante la construcción de la imagen.
-
 # Comando para iniciar la aplicación
 CMD ["celery", "-A", "tasks", "worker", "--loglevel=info"]
