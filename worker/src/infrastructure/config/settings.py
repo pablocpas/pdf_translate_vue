@@ -3,20 +3,25 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 
 class Settings(BaseSettings):
+    # --- Storage Provider Configuration ---
+    STORAGE_PROVIDER: str = "minio"  # "minio" for local development, "s3" for production
+    
+    # --- Common S3/MinIO Configuration ---
     AWS_ACCESS_KEY_ID: str
     AWS_SECRET_ACCESS_KEY: str
     AWS_S3_BUCKET: str
-    AWS_S3_ENDPOINT_URL: str
-    
-    # Estas pueden tener valores por defecto razonables.
     AWS_REGION: str = 'us-east-1'
     AWS_S3_USE_SSL: bool = False
-    TRANSLATED_TTL_DAYS: int = 7
     
-    # OpenAI Configuration
-    OPENAI_API_KEY: Optional[str] = None
-
+    # --- Environment-specific Endpoints ---
+    # Internal endpoint (for operations like upload/download)
+    AWS_S3_ENDPOINT_URL: str
+    # Public endpoint (for presigned URLs accessible from frontend)
     AWS_S3_PUBLIC_ENDPOINT_URL: Optional[str] = None
+    
+    # --- Other Configuration ---
+    TRANSLATED_TTL_DAYS: int = 7
+    OPENAI_API_KEY: Optional[str] = None
 
 settings = Settings()
 
