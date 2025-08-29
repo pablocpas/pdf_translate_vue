@@ -1,0 +1,36 @@
+graph TD
+    subgraph "Usuario"
+        User["👤 Cliente (Navegador Web)"]
+    end
+
+    subgraph "Arquitectura Contenedorizada (Docker Compose)"
+        Frontend["Frontend (Vue.js)"]
+        Backend["Backend (API FastAPI)"]
+        Worker["Worker (Celery)"]
+        Redis["Redis (Message Broker / Cache)"]
+        MinIO["MinIO (Almacenamiento S3)"]
+    end
+
+    subgraph "Servicios Externos"
+        LLM_API["API Externa (OpenRouter LLM)"]
+    end
+
+    %% Flujo de Generación Inicial
+    User -- "1. Sube PDF" --> Frontend
+    Frontend -- "2. Petición API con el archivo" --> Backend
+    Backend -- "3. Almacena PDF original" --> MinIO
+    Backend -- "4. Publica tarea de procesamiento" --> Redis
+    Redis -- "5. Entrega tarea" --> Worker
+    Worker -- "6. Obtiene PDF original" --> MinIO
+    Worker -- "7. Petición de Traducción" --> LLM_API
+    Worker -- "8. Almacena PDF traducido y JSON" --> MinIO
+    Worker -- "9. Actualiza estado de la tarea" --> Redis
+    
+    %% Flujo de Sondeo y Descarga
+    Frontend -- "10. Sondea estado de la tarea" --> Backend
+    Backend -- "11. Lee estado desde Redis" --> Redis
+    Backend -- "12. Genera URL de descarga" --> Frontend
+    User -- "13. Descarga resultado desde MinIO" --> MinIO
+
+    %% Estilo para resaltar la API externa
+    style LLM_API fill:#E6F3FF,stroke:#0066CC,stroke-width:2px

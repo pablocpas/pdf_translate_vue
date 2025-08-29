@@ -1,0 +1,38 @@
+graph TD
+    subgraph "Frontend (Usuario)"
+        A[Inicio: Usuario sube PDF y elige opciones] --> B[Envía petición API al Backend];
+        B --> C[Recibe Task ID y muestra estado 'Procesando'];
+        C --> D{Sondea al Backend por el estado};
+        D -- Task en progreso --> E[Actualiza UI con % de progreso];
+        E --> D;
+        D -- Task completada --> F[Muestra resultados: PDF y editor];
+        F --> G[Fin];
+    end
+
+    subgraph "Backend (API FastAPI)"
+        B_IN((...)) --> B1[Recibe petición];
+        B1 --> B2[Sube PDF original a MinIO];
+        B2 --> B3[Publica tarea en cola de Redis];
+        B3 --> B4[Responde al Frontend con Task ID];
+        B4 --> B_OUT((...));
+        
+        D_IN((...)) --> D1[Recibe petición de sondeo];
+        D1 --> D2[Consulta estado de la tarea en Redis];
+        D2 --> D_OUT2((...));
+    end
+
+    subgraph "Worker (Celery)"
+        W_IN((...)) --> W1[Consume tarea desde Redis];
+        W1 --> W2[Descarga PDF original desde MinIO];
+        W2 --> W3["Pipeline por cada página:<br/>1. Convertir a imagen<br/>2. Segmentar Layout<br/>3. OCR a texto<br/>4. Traducir con LLM<br/>5. Actualizar progreso en Redis"];
+        W3 --> W4[Construye PDF traducido final];
+        W4 --> W5[Sube PDF traducido y JSON de datos a MinIO];
+        W5 --> W6[Marca tarea como 'Completada' en Redis];
+    end
+
+    %% Conexiones entre carriles
+    B -- API Request --> B_IN;
+    B_OUT -- Task ID --> C;
+    D -- API Request --> D_IN;
+    D_OUT2 -- Estado de la tarea --> D;
+    B3 -- Publica --> W_IN;

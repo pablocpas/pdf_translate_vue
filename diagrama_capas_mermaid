@@ -1,0 +1,40 @@
+graph TD
+    subgraph "Cliente"
+        User["👤<br>Usuario<br>(Navegador Web)"]
+    end
+
+    subgraph "Sistema de Traducción Asistida (Desplegado en Docker)"
+        
+        subgraph "Interfaz de Usuario"
+            Frontend["<b>Frontend</b><br><i>Contenedor Vue.js</i><br>Proporciona la UI, gestiona la carga de archivos y el sondeo de estado."]
+        end
+
+        subgraph "Capa de Aplicación"
+            Backend["<b>Backend API</b><br><i>Contenedor FastAPI</i><br>Orquesta el flujo de trabajo, gestiona tareas y autenticación."]
+            Worker["<b>Worker</b><br><i>Contenedor Celery</i><br>Ejecuta el pipeline de procesamiento (OCR, Segmentación, Traducción)."]
+        end
+
+        subgraph "Capa de Datos y Comunicación"
+            Redis["<b>Message Broker / Cache</b><br><i>Contenedor Redis</i><br>Gestiona la cola de tareas asíncronas y el estado de las mismas."]
+            MinIO["<b>Almacenamiento de Objetos</b><br><i>Contenedor MinIO (S3 API)</i><br>Almacena los archivos PDF y los metadatos de traducción."]
+        end
+    end
+
+    subgraph "Dependencias Externas"
+        LLM_API["<b>Servicio de Traducción</b><br><i>OpenRouter LLM API</i>"]
+    end
+
+    %% Definiendo las interacciones
+    User -- "HTTPS" --> Frontend
+    Frontend -- "API REST (JSON)" --> Backend
+    
+    Backend -- "Publica/Lee Tareas" --> Redis
+    Backend -- "Almacena/Lee Archivos" --> MinIO
+    
+    Worker -- "Consume Tareas" --> Redis
+    Worker -- "Lee/Escribe Archivos" --> MinIO
+    Worker -- "Petición de Traducción (API REST)" --> LLM_API
+
+    %% Estilo
+    style User fill:#f9f,stroke:#333,stroke-width:2px
+    style LLM_API fill:#E6F3FF,stroke:#0066CC,stroke-width:2px
