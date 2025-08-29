@@ -9,7 +9,7 @@ from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Global S3 client configuration
+# Global S3 client configuration for internal operations
 _session = boto3.session.Session()
 _client = _session.client(
     "s3",
@@ -20,6 +20,22 @@ _client = _session.client(
         signature_version="s3v4",
         s3={
             'addressing_style': 'path'  # Mejor compatibilidad con MinIO
+        }
+    ),
+    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+)
+
+# Separate client for presigned URLs with public endpoint
+_public_client = _session.client(
+    "s3",
+    region_name=settings.AWS_REGION,
+    endpoint_url=settings.AWS_S3_PUBLIC_ENDPOINT_URL or settings.AWS_S3_ENDPOINT_URL,
+    use_ssl=settings.AWS_S3_USE_SSL,
+    config=Config(
+        signature_version="s3v4",
+        s3={
+            'addressing_style': 'path'
         }
     ),
     aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
@@ -132,7 +148,7 @@ def presigned_get_url(
             params["ResponseContentType"] = content_type
             params["ResponseContentDisposition"] = f'inline; filename="{inline_filename}"'
 
-        url = _client.generate_presigned_url(
+        url = _public_client.generate_presigned_url(
             "get_object",
             Params=params,
             ExpiresIn=expires
