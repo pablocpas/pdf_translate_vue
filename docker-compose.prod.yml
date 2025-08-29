@@ -9,7 +9,7 @@ x-common-env: &common-env
   # --- Common S3/MinIO Configuration ---
   AWS_ACCESS_KEY_ID: minioadmin
   AWS_SECRET_ACCESS_KEY: minioadmin
-  AWS_REGION: us-east-1
+  AWS_REGION: ""
   AWS_S3_BUCKET: pdf-translator-bucket
   AWS_S3_USE_SSL: false
   
