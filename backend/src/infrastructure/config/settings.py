@@ -1,20 +1,22 @@
 import os
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 
 class Settings(BaseSettings):
-    # S3/MinIO Configuration
-    AWS_ACCESS_KEY_ID: str = os.getenv('AWS_ACCESS_KEY_ID', 'minioadmin')
-    AWS_SECRET_ACCESS_KEY: str = os.getenv('AWS_SECRET_ACCESS_KEY', 'minioadmin')
-    AWS_REGION: str = os.getenv('AWS_REGION', 'us-east-1')
-    AWS_S3_BUCKET: str = os.getenv('AWS_S3_BUCKET', 'pdf-translator-bucket')
-    AWS_S3_ENDPOINT_URL: Optional[str] = os.getenv('AWS_S3_ENDPOINT_URL', 'http://minio:9000')
-    AWS_S3_PUBLIC_ENDPOINT_URL: Optional[str] = os.getenv('AWS_S3_PUBLIC_ENDPOINT_URL', 'http://localhost:9000')
-    AWS_S3_USE_SSL: bool = os.getenv('AWS_S3_USE_SSL', 'false').lower() == 'true'
-    TRANSLATED_TTL_DAYS: int = int(os.getenv('TRANSLATED_TTL_DAYS', '7'))
+    AWS_ACCESS_KEY_ID: str
+    AWS_SECRET_ACCESS_KEY: str
+    AWS_S3_BUCKET: str
+    AWS_S3_ENDPOINT_URL: str
+    
+    # Estas pueden tener valores por defecto razonables.
+    AWS_REGION: str = 'us-east-1'
+    AWS_S3_USE_SSL: bool = False
+    TRANSLATED_TTL_DAYS: int = 7
     
     # OpenAI Configuration
-    OPENAI_API_KEY: Optional[str] = os.getenv('OPENAI_API_KEY')
+    OPENAI_API_KEY: Optional[str] = None
+
+    AWS_S3_PUBLIC_ENDPOINT_URL: Optional[str] = None
 
 settings = Settings()
 
