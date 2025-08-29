@@ -131,15 +131,33 @@ def presigned_get_url(
         if inline_filename:
             params["ResponseContentType"] = content_type
             params["ResponseContentDisposition"] = f'inline; filename="{inline_filename}"'
-
-        url = _client.generate_presigned_url(
+    # Genera la URL prefirmada usando el cliente configurado (con el endpoint INTERNO)
+        internal_presigned_url = _client.generate_presigned_url(
             "get_object",
             Params=params,
             ExpiresIn=expires
         )
 
-        logger.info(f"URL prefirmada generada para {key}: {url}")
-        return url
+        # Si tenemos una URL pública definida y difiere de la interna,
+        # reemplazamos el endpoint interno por el público para que el navegador del cliente pueda acceder.
+        if settings.AWS_S3_PUBLIC_ENDPOINT_URL and settings.AWS_S3_ENDPOINT_URL:
+            # Asegurarse de que ambos endpoints tienen un esquema (http:// o https://) para el replace
+            # y que la comparación sea robusta.
+            # Convertimos a esquema y dominio base para un reemplazo más seguro.
+            internal_base_url = f"{internal_presigned_url.split('/minio')[0]}/minio" if '/minio' in internal_presigned_url else settings.AWS_S3_ENDPOINT_URL
+            public_base_url = settings.AWS_S3_PUBLIC_ENDPOINT_URL
+
+            # Reemplazar solo si son diferentes
+            if internal_base_url != public_base_url:
+                final_url = internal_presigned_url.replace(internal_base_url, public_base_url)
+                logger.info(f"URL prefirmada generada (interna: {internal_presigned_url}) y convertida a pública para {key}: {final_url}")
+                return final_url
+        
+        # Si no hay URL pública o es la misma, o el reemplazo no se aplicó,
+        # devolvemos la URL generada por defecto (que ya debería ser la correcta si no hay proxy,
+        # o la interna si es para uso interno).
+        logger.info(f"URL prefirmada generada (sin conversión a pública) para {key}: {internal_presigned_url}")
+        return internal_presigned_url
 
     except Exception as e:
         logger.error(f"Error generando URL prefirmada para {key}: {e}", exc_info=True)
