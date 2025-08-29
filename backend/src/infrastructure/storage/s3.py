@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 # Common configuration for both clients
 _common_config = {
-    "region_name": settings.AWS_REGION,
     "use_ssl": settings.AWS_S3_USE_SSL,
     "config": Config(
         signature_version="s3v4",
@@ -22,6 +21,10 @@ _common_config = {
     "aws_access_key_id": settings.AWS_ACCESS_KEY_ID,
     "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY,
 }
+
+# Add region only if it's not empty (MinIO doesn't need region)
+if settings.AWS_REGION and settings.AWS_REGION.strip():
+    _common_config["region_name"] = settings.AWS_REGION
 
 # Global S3 client instances
 _session = boto3.session.Session()
