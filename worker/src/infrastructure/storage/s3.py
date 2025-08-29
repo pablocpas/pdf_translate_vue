@@ -174,6 +174,14 @@ def presigned_get_url(
             ExpiresIn=expires
         )
         
+
+        logger.info("--- INICIANDO GENERACIÓN DE URL PREFIRMADA ---")
+        logger.info(f"Clave (Key): {key}")
+        logger.info(f"Bucket: {settings.AWS_S3_BUCKET}")
+        
+        # Esto es CRÍTICO: nos confirma qué endpoint se está usando para firmar
+        presigned_endpoint = _presigned_client.meta.endpoint_url
+        logger.info(f"Endpoint del cliente de prefirmado: {presigned_endpoint}")
         logger.info(f"Generated presigned URL for {key}: {presigned_url}")
         return presigned_url
 
