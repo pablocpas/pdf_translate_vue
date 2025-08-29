@@ -139,6 +139,8 @@ def presigned_get_url(
             Params=params,
             ExpiresIn=expires
         )
+        logger.warning(f"DEBUG: Devolviendo URL interna directamente: {internal_url}")
+
 
         # 2. Si no hay una URL pública definida, devolvemos la interna (útil para tests).
         if not settings.AWS_S3_PUBLIC_ENDPOINT_URL:
