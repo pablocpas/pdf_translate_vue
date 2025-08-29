@@ -5,6 +5,7 @@ from io import BytesIO
 import logging
 from typing import Optional
 
+from urllib.parse import urlparse, urlunparse
 from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -118,9 +119,8 @@ def presigned_get_url(
     content_type: str = "application/pdf"
 ) -> str:
     """
-    Genera una URL S3 prefirmada.
-    Como el cliente Boto3 ya está configurado con el endpoint público,
-    la URL generada será correcta de forma nativa.
+    Genera una URL S3 prefirmada pública de forma robusta.
+    Utiliza urllib.parse para evitar errores al construir la URL final.
     """
     try:
         params = {
@@ -131,33 +131,44 @@ def presigned_get_url(
         if inline_filename:
             params["ResponseContentType"] = content_type
             params["ResponseContentDisposition"] = f'inline; filename="{inline_filename}"'
-    # Genera la URL prefirmada usando el cliente configurado (con el endpoint INTERNO)
-        internal_presigned_url = _client.generate_presigned_url(
+
+        # 1. Genera la URL prefirmada usando el cliente configurado con el endpoint INTERNO.
+        #    Ejemplo de resultado: http://minio:9000/pdf-translator-bucket/archivo.pdf?query...
+        internal_url = _client.generate_presigned_url(
             "get_object",
             Params=params,
             ExpiresIn=expires
         )
 
-        # Si tenemos una URL pública definida y difiere de la interna,
-        # reemplazamos el endpoint interno por el público para que el navegador del cliente pueda acceder.
-        if settings.AWS_S3_PUBLIC_ENDPOINT_URL and settings.AWS_S3_ENDPOINT_URL:
-            # Asegurarse de que ambos endpoints tienen un esquema (http:// o https://) para el replace
-            # y que la comparación sea robusta.
-            # Convertimos a esquema y dominio base para un reemplazo más seguro.
-            internal_base_url = f"{internal_presigned_url.split('/minio')[0]}/minio" if '/minio' in internal_presigned_url else settings.AWS_S3_ENDPOINT_URL
-            public_base_url = settings.AWS_S3_PUBLIC_ENDPOINT_URL
+        # 2. Si no hay una URL pública definida, devolvemos la interna (útil para tests).
+        if not settings.AWS_S3_PUBLIC_ENDPOINT_URL:
+            logger.warning("AWS_S3_PUBLIC_ENDPOINT_URL no está definida. Devolviendo URL interna.")
+            return internal_url
 
-            # Reemplazar solo si son diferentes
-            if internal_base_url != public_base_url:
-                final_url = internal_presigned_url.replace(internal_base_url, public_base_url)
-                logger.info(f"URL prefirmada generada (interna: {internal_presigned_url}) y convertida a pública para {key}: {final_url}")
-                return final_url
+        # 3. Parseamos (descomponemos) ambas URLs en sus componentes.
+        internal_parts = urlparse(internal_url)
+        public_parts = urlparse(settings.AWS_S3_PUBLIC_ENDPOINT_URL)
+
+        # 4. Construimos la ruta final combinando la base de la ruta pública y la ruta del objeto.
+        #    - public_parts.path -> '/minio'
+        #    - internal_parts.path -> '/pdf-translator-bucket/archivo.pdf'
+        #    - Resultado deseado: '/minio/pdf-translator-bucket/archivo.pdf'
+        final_path = public_parts.path.rstrip('/') + internal_parts.path
+
+        # 5. Reconstruimos la URL final usando las partes correctas de cada una.
+        final_url_parts = (
+            public_parts.scheme,      # 'http' (de la URL pública)
+            public_parts.netloc,      # '37.187.253.172' (de la URL pública)
+            final_path,               # La ruta que acabamos de construir
+            internal_parts.params,    # Parámetros (usualmente vacío)
+            internal_parts.query,     # La firma y otros parámetros S3 (¡muy importante!)
+            internal_parts.fragment   # Fragmento (usualmente vacío)
+        )
         
-        # Si no hay URL pública o es la misma, o el reemplazo no se aplicó,
-        # devolvemos la URL generada por defecto (que ya debería ser la correcta si no hay proxy,
-        # o la interna si es para uso interno).
-        logger.info(f"URL prefirmada generada (sin conversión a pública) para {key}: {internal_presigned_url}")
-        return internal_presigned_url
+        public_url = urlunparse(final_url_parts)
+        
+        logger.info(f"URL prefirmada generada y convertida a pública para {key}: {public_url}")
+        return public_url
 
     except Exception as e:
         logger.error(f"Error generando URL prefirmada para {key}: {e}", exc_info=True)
