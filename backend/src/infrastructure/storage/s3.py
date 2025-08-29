@@ -22,8 +22,7 @@ _common_config = {
     "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY,
 }
 
-# Add region only if it's not empty (MinIO doesn't need region)
-if settings.AWS_REGION and settings.AWS_REGION.strip():
+if settings.STORAGE_PROVIDER != "minio" and settings.AWS_REGION and settings.AWS_REGION.strip():
     _common_config["region_name"] = settings.AWS_REGION
 
 # Global S3 client instances
