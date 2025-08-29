@@ -28,9 +28,6 @@ _client = _session.client(
 
 def ensure_bucket_exists():
     """Create bucket if it doesn't exist"""
-
-            
-
     try:
         _client.head_bucket(Bucket=settings.AWS_S3_BUCKET)
         logger.info(f"Bucket {settings.AWS_S3_BUCKET} exists")
@@ -50,9 +47,8 @@ def upload_bytes(key: str, data: bytes, content_type: Optional[str] = None):
         
         # No usar ChecksumAlgorithm con MinIO por compatibilidad
         _client.put_object(Bucket=settings.AWS_S3_BUCKET, Key=key, Body=data, **extra)
-        logger.info(f"Uploadedeeeee {len(data)} bytes to s3://{settings.AWS_S3_BUCKET}/{key}")
-        logger.info(f"public endpoint URL: {settings.AWS_S3_PUBLIC_ENDPOINT_URL}")
-        logger.info(f"internal endpoint URL: {settings.AWS_S3_ENDPOINT_URL}")
+        logger.info(f"Uploaded {len(data)} bytes to s3://{settings.AWS_S3_BUCKET}/{key}")
+        
         # Verificar que el archivo se subió correctamente
         if key_exists(key):
             logger.info(f"Upload verified for {key}")
@@ -122,9 +118,9 @@ def presigned_get_url(
     content_type: str = "application/pdf"
 ) -> str:
     """
-    Genera una URL S3 prefirmada. 
-    Se apoya en la variable de entorno MINIO_SERVER_URL para que MinIO construya
-    la URL pública correcta de forma automática.
+    Genera una URL S3 prefirmada.
+    Como el cliente Boto3 ya está configurado con el endpoint público,
+    la URL generada será correcta de forma nativa.
     """
     try:
         params = {
@@ -133,21 +129,17 @@ def presigned_get_url(
         }
         
         if inline_filename:
-            # Parámetros para forzar la visualización en el navegador
             params["ResponseContentType"] = content_type
             params["ResponseContentDisposition"] = f'inline; filename="{inline_filename}"'
 
-        # Usamos el cliente global. Él habla con http://minio:9000.
-        # MinIO, al recibir la petición, usará su configuración para devolver
-        # una URL que apunta al dominio público.
-        public_url = _client.generate_presigned_url(
+        url = _client.generate_presigned_url(
             "get_object",
             Params=params,
             ExpiresIn=expires
         )
 
-        logger.info(f"URL pública generada por MinIO para {key}: {public_url}")
-        return public_url
+        logger.info(f"URL prefirmada generada para {key}: {url}")
+        return url
 
     except Exception as e:
         logger.error(f"Error generando URL prefirmada para {key}: {e}", exc_info=True)

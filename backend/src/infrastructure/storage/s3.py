@@ -118,9 +118,9 @@ def presigned_get_url(
     content_type: str = "application/pdf"
 ) -> str:
     """
-    Genera una URL S3 prefirmada. 
-    Se apoya en la variable de entorno MINIO_SERVER_URL para que MinIO construya
-    la URL pública correcta de forma automática.
+    Genera una URL S3 prefirmada.
+    Como el cliente Boto3 ya está configurado con el endpoint público,
+    la URL generada será correcta de forma nativa.
     """
     try:
         params = {
@@ -129,21 +129,17 @@ def presigned_get_url(
         }
         
         if inline_filename:
-            # Parámetros para forzar la visualización en el navegador
             params["ResponseContentType"] = content_type
             params["ResponseContentDisposition"] = f'inline; filename="{inline_filename}"'
 
-        # Usamos el cliente global. Él habla con http://minio:9000.
-        # MinIO, al recibir la petición, usará su configuración para devolver
-        # una URL que apunta al dominio público.
-        public_url = _client.generate_presigned_url(
+        url = _client.generate_presigned_url(
             "get_object",
             Params=params,
             ExpiresIn=expires
         )
 
-        logger.info(f"URL pública generada por MinIO para {key}: {public_url}")
-        return public_url
+        logger.info(f"URL prefirmada generada para {key}: {url}")
+        return url
 
     except Exception as e:
         logger.error(f"Error generando URL prefirmada para {key}: {e}", exc_info=True)
