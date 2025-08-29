@@ -10,6 +10,9 @@ import time
 from typing import List, Dict, Any
 from io import BytesIO
 
+from botocore.exceptions import FlexibleChecksumError
+
+
 # Imports del proyecto
 from src.domain.translator.processor import extract_and_translate_page_data, get_font_for_language, adjust_paragraph_font_size
 from src.domain.translator.pdf_utils import cleanup_temp_directory
@@ -186,7 +189,15 @@ def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lan
         return {"status": "failed", "error": str(e)}
 
 
-@celery_app.task(name='process_page_task', bind=True)
+@celery_app.task(
+    name='process_page_task', 
+    bind=True,
+    # Configuración de reintentos:
+    autoretry_for=(FlexibleChecksumError,), # Reintenta SÓLO para este error
+    retry_kwargs={'max_retries': 3},       # Inténtalo un máximo de 3 veces
+    retry_backoff=True,                    # Espera exponencial entre reintentos (e.g., 1s, 2s, 4s)
+    retry_backoff_max=60                   # Espera máxima de 60 segundos
+)
 def process_page_task(self, task_id: str, page_number: int, image_key: str, src_lang: str, tgt_lang: str, model_type: str):
     """
     Tarea worker: descarga imagen de S3, procesa página y devuelve resultados.
@@ -207,6 +218,12 @@ def process_page_task(self, task_id: str, page_number: int, image_key: str, src_
         
         logger.info(f"Página {page_number} procesada exitosamente")
         return result
+    
+    except FlexibleChecksumError as e:
+        # Celery gestionará el reintento automáticamente gracias a 'autoretry_for'.
+        # Este bloque se ejecutará, pero la tarea será reenviada.
+        logger.warning(f"Checksum error en página {page_number}. Reintentando... Error: {e}")
+        raise # Es importante relanzar la excepción para que Celery la capture.
         
     except Exception as e:
         logger.error(f"Error procesando página {page_number}: {e}", exc_info=True)
@@ -269,7 +286,8 @@ def finalize_task(self, results_list: List[Dict[str, Any]], task_id: str, origin
                             "position": text_region["position"]
                         }
                         for text_region in page_data.get("text_regions", [])
-                    ]
+                    ],
+                    "image_regions": page_data.get("image_regions", [])
                 }
                 for i, page_data in enumerate(results_list) if not page_data.get("error")
             ]
@@ -369,11 +387,14 @@ def regenerate_pdf_s3_task(task_id: str, translation_data: dict, position_data: 
                         "position": region_pos["position"]
                     })
             
+            # Obtener image_regions guardadas
+            image_regions = page_pos.get("image_regions", []) if page_pos else []
+            
             results_list.append({
                 "page_number": page_num,
                 "page_dimensions": dimensions,
                 "text_regions": text_regions,
-                "image_regions": [],  # Las imágenes se mantienen desde S3
+                "image_regions": image_regions,
                 "error": None
             })
         
