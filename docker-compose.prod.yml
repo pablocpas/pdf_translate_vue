@@ -17,8 +17,6 @@ services:
       dockerfile: Dockerfile
     ports:
       - "80:80"
-    depends_on:
-      - backend
     environment:
       - VITE_API_URL=/api
     restart: unless-stopped
