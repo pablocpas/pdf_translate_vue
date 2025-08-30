@@ -91,7 +91,7 @@ services:
       - MINIO_ROOT_USER=minioadmin
       - MINIO_ROOT_PASSWORD=minioadmin
       - MINIO_DOMAIN=${DOMAIN}
-      - MINIO_SERVER_URL=http://${DOMAIN}/minio
+      - MINIO_SERVER_URL=https://${DOMAIN}/minio
 
     command: server /data --console-address ":9001"
     volumes:
