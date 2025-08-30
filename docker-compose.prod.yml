@@ -6,7 +6,7 @@ x-common-env: &common-env
   AWS_REGION: us-east-1
   AWS_S3_BUCKET: pdf-translator-bucket
   AWS_S3_ENDPOINT_URL: http://minio:9000
-  AWS_S3_PUBLIC_ENDPOINT_URL: http://${DOMAIN}/minio
+  AWS_S3_PUBLIC_ENDPOINT_URL: https://${DOMAIN}/minio
   AWS_S3_USE_SSL: false
   TRANSLATED_TTL_DAYS: 7
 
@@ -17,8 +17,15 @@ services:
       dockerfile: Dockerfile
     ports:
       - "80:80"
+      - "443:443"
     environment:
       - VITE_API_URL=/api
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    command: '/bin/sh -c ''while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g "daemon off;"'''
+
     restart: unless-stopped
 
   backend:
@@ -39,6 +46,18 @@ services:
       - minio
       - frontend
     restart: unless-stopped
+
+
+  certbot:
+    image: certbot/certbot
+    container_name: certbot
+    # Monta los mismos volúmenes que Nginx para compartir los certificados y el desafío
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    # El comando se ejecutará periódicamente para renovar los certificados.
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
 
   worker:
     build:
