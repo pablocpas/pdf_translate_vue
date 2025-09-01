@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseSettings
 from typing import Optional
 
 class Settings(BaseSettings):
@@ -21,6 +21,7 @@ settings = Settings()
 
 # Configuration constants
 MARGIN = 20
+DEBUG_MODE = False
 
 # Supported languages
 SUPPORTED_LANGUAGES = {
