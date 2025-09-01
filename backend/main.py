@@ -196,17 +196,20 @@ async def get_task_status(task_id: str):
         elif state == 'FAILURE':
             status = TaskStatus.FAILED
             progress = None
-            error_message = str(orchestrator_task.traceback) if orchestrator_task.traceback else "Error desconocido en la tarea."
         else: # Otros estados de Celery (REVOKED, RETRY) se tratan como PROCESSING
             status = TaskStatus.PROCESSING
             progress = TranslationProgress(step=ProcessingStep.UNKNOWN)
         
         # Construir la respuesta final
+        error_message = None
+        if status == TaskStatus.FAILED:
+            error_message = str(orchestrator_task.traceback) if orchestrator_task.traceback else "Error desconocido en la tarea."
+        
         task_response = TranslationTask(
             id=task_id,
             status=status,
             progress=progress,
-            error=error_message if status == TaskStatus.FAILED else None,
+            error=error_message,
             originalFile=f"{task_id}/original.pdf",
             translatedFile=f"{task_id}/translated/translated.pdf" if status == TaskStatus.COMPLETED else None
         )
@@ -377,36 +380,6 @@ async def update_translation_data(task_id: str, translation_data: TranslationDat
         logger.error(f"Error actualizando traducción para {task_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
-@app.post("/pdfs/regenerate/{task_id}")
-async def regenerate_pdf_endpoint(
-    task_id: str,
-    translation_data: TranslationData = Body(...),
-    position_data: dict = Body(...)
-):
-    """
-    Regenera el PDF con nuevos datos de traducción usando S3.
-    """
-    try:
-        logger.info(f"Regenerando PDF para tarea {task_id}")
-        
-        # Lanzar tarea de regeneración
-        result = celery_app.send_task('regenerate_pdf_s3', args=[task_id, translation_data.dict(), position_data])
-        
-        # Esperar resultado (puede ser mejorado con polling asíncrono)
-        task_result = result.get(timeout=60)
-        
-        if "error" in task_result:
-            raise HTTPException(status_code=500, detail=f"Error regenerando PDF: {task_result['error']}")
-        
-        logger.info(f"PDF regenerado exitosamente para tarea {task_id}")
-        
-        return {"success": True, "message": "PDF regenerado correctamente"}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error regenerando PDF para {task_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
 @app.get("/")

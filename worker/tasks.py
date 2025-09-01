@@ -15,7 +15,6 @@ from botocore.exceptions import FlexibleChecksumError
 
 # Imports del proyecto
 from src.domain.translator.processor import extract_and_translate_page_data, get_font_for_language, adjust_paragraph_font_size
-from src.domain.translator.pdf_utils import cleanup_temp_directory
 from src.infrastructure.config.settings import MARGIN, settings
 from src.infrastructure.storage.s3 import upload_bytes, download_bytes, presigned_get_url
 
@@ -142,13 +141,10 @@ def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lan
         original_key = f"{task_id}/original.pdf"
         upload_bytes(original_key, file_content, content_type="application/pdf")
         logger.info(f"PDF subido a S3: {original_key}")
-        
-        # 2. Usar el contenido del archivo directamente
-        pdf_bytes = file_content
-        
+                
         # 2. Convertir PDF a imágenes
         self.update_state(state='PROGRESS', meta={'status': 'Analizando páginas'})
-        images = convert_from_bytes(pdf_bytes, fmt="png", dpi=300)
+        images = convert_from_bytes(file_content, fmt="png", dpi=300)
         
         if not images:
             raise Exception("No se pudieron generar imágenes del PDF.")
