@@ -128,13 +128,16 @@ const currentTask = ref<TranslationTask | null>(null);
 const lastProgress = ref<number>(0);
 const simulatedProgress = ref<number>(0);
 const progressInterval = ref<number | null>(null);
+const isNavigatingToResult = ref<boolean>(false);
 
 // --- Computed Properties ---
 
 // `isProcessing` ahora se basa en el estado de la tarea actual
 const isProcessing = computed(() => {
   if (!currentTask.value) return false;
-  return currentTask.value.status === 'PENDING' || currentTask.value.status === 'PROCESSING';
+  return currentTask.value.status === 'PENDING' || 
+         currentTask.value.status === 'PROCESSING' || 
+         isNavigatingToResult.value;
 });
 
 // Convierte el `step` de texto en un valor numérico para la UI
@@ -188,6 +191,15 @@ const numericProgress = computed(() => {
 });
 
 const currentStepText = computed(() => {
+  console.log('currentStepText computed:', {
+    status: currentTask.value?.status,
+    isNavigatingToResult: isNavigatingToResult.value,
+    step: currentTask.value?.progress?.step
+  });
+  
+  if (currentTask.value?.status === 'COMPLETED' || isNavigatingToResult.value) {
+    return 'Traducción completada';
+  }
   return currentTask.value?.progress?.step || 'Iniciando proceso';
 });
 
@@ -277,7 +289,12 @@ const startPolling = (taskId: string) => {
       if (taskStatus.status === 'COMPLETED') {
         stopProgressSimulation();
         clearInterval(pollingInterval.value!);
-        router.push('/result');
+        isNavigatingToResult.value = true;
+        
+        // Mostrar 100% y esperar un momento antes de navegar
+        setTimeout(() => {
+          router.push('/result');
+        }, 1500);
       } else if (taskStatus.status === 'FAILED') {
         stopProgressSimulation();
         clearInterval(pollingInterval.value!);
@@ -322,6 +339,7 @@ const handleSubmit = async () => {
   simulatedProgress.value = 0;
   errors.general = '';
   errors.code = undefined;
+  isNavigatingToResult.value = false;
   
   // Clear previous intervals
   if (pollingInterval.value) {
