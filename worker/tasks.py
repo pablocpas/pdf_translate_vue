@@ -317,7 +317,7 @@ def finalize_task(self, results_list: List[Dict[str, Any]], task_id: str, origin
         logger.info(f"Tarea {task_id} completada exitosamente")
         
         return {
-            "status": "DONE",
+            "status": "COMPLETED",
             "translated_key": translated_key,
             "translation_data_key": translation_key,
             "position_data_key": position_key,

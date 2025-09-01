@@ -10,16 +10,8 @@
     <div class="result-card">
       <h2 class="title">Resultado de la traducción</h2>
 
-      <!-- Estado de procesamiento -->
-      <div v-if="isProcessing" class="PROCESSING-status">
-        <div class="spinner"></div>
-        <p class="status-text">Procesando documento...</p>
-        <p class="status-detail">{{ currentTask?.progress?.step || 'Iniciando proceso...' }}</p>
-        <p v-if="currentTask?.progress?.details" class="status-detail">{{ currentTask.progress.details }}</p>
-      </div>
-
       <!-- Resultado -->
-      <div v-if="isCompleted" class="result-grid">
+      <div class="result-grid">
         <div class="pdf-section">
           <h3 class="subtitle">PDF Original</h3>
           <div class="pdf-viewer">
@@ -81,17 +73,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import TranslationEditor from './TranslationEditor.vue';
 import { useRouter } from 'vue-router';
 import { useTranslationStore } from '@/stores/translationStore';
-import { getTranslationStatus } from '@/api/pdfs';
 
 const router = useRouter();
 const showEditor = ref(false);
 const translationStore = useTranslationStore();
 const currentTask = computed(() => translationStore.currentTask);
-const checkInterval = ref<number>();
 
 const originalPdfUrl = computed(() => 
   currentTask.value?.id ? 
@@ -105,51 +95,15 @@ const translatedPdfUrl = computed(() =>
   ''
 );
 
-const isProcessing = computed(() => 
-  currentTask.value?.status === 'PENDING' || 
-  currentTask.value?.status === 'PROCESSING'
-);
-
-const isCompleted = computed(() => 
-  currentTask.value?.status === 'COMPLETED'
-);
-
-async function checkStatus() {
-  if (!currentTask.value?.id) {
-    router.push('/');
-    return;
-  }
-
-  try {
-    const task = await getTranslationStatus(currentTask.value.id);
-    translationStore.setCurrentTask(task);
-
-    if (task.status === 'FAILED' || task.status === 'COMPLETED') {
-      clearInterval(checkInterval.value);
-    }
-  } catch (e) {
-    console.error('Error al verificar estado:', e);
-    clearInterval(checkInterval.value);
-  }
-}
 
 onMounted(() => {
-  if (!currentTask.value) {
-    router.push('/');
-    return;
-  }
-
-  checkStatus();
-  
-  if (isProcessing.value) {
-    checkInterval.value = window.setInterval(checkStatus, 5000);
-  }
-});
-
-onUnmounted(() => {
-  if (checkInterval.value) {
-    clearInterval(checkInterval.value);
-  }
+  // Pequeño delay para asegurar que el store esté sincronizado
+  setTimeout(() => {
+    if (!currentTask.value) {
+      router.push('/');
+      return;
+    }
+  }, 100);
 });
 </script>
 
@@ -190,44 +144,6 @@ onUnmounted(() => {
   margin: 0 0 1.25rem 0;
   color: #1a1b1e;
   font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.PROCESSING-status {
-  text-align: center;
-  padding: 3rem 2rem;
-  background: #f8f9fa;
-  border-radius: 12px;
-  margin: 2rem 0;
-}
-
-.spinner {
-  border: 4px solid rgba(34, 139, 230, 0.1);
-  border-top: 4px solid #228be6;
-  border-radius: 50%;
-  width: 50px;
-  height: 50px;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 1.5rem;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.status-text {
-  font-size: 1.375rem;
-  color: #1a1b1e;
-  margin: 0 0 0.75rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.status-detail {
-  color: #495057;
-  margin: 0;
-  font-size: 0.9375rem;
   letter-spacing: -0.01em;
 }
 
