@@ -19,6 +19,9 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+# Configuration constants
+MARGIN = 20
+
 # Supported languages
 SUPPORTED_LANGUAGES = {
     # European Languages

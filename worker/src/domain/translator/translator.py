@@ -3,12 +3,12 @@ import logging
 from typing import List
 from pydantic import BaseModel
 from openai import OpenAI
-from ...infrastructure.config.settings import GPT_MODEL, OPENAI_API_KEY
+from ...infrastructure.config.settings import settings
 
 # Configura el cliente con tu base_url y API Key de OpenRouter o OpenAI:
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key=OPENAI_API_KEY,
+    api_key=settings.OPENAI_API_KEY,
 )
 
 # Mapeo ISO -> nombre de idioma
