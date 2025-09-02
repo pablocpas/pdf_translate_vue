@@ -1,16 +1,16 @@
+# src/domain/layout.py
+
 import logging
 from typing import List, Tuple, Any, NamedTuple
 from PIL import Image
-
-# Nuevas dependencias
-from doclayout_yolo import YOLOv10
-from shapely.geometry import box, Polygon, MultiPolygon, GeometryCollection
-from shapely.ops import unary_union
 import os
+
+# Dependencias de terceros
+from doclayout_yolo import YOLOv10
 
 logger = logging.getLogger(__name__)
 
-# --- Reemplazo de las estructuras de datos de layoutparser ---
+# --- Reemplazo de las estructuras de datos de layoutparser (sin cambios) ---
 
 class Rectangle(NamedTuple):
     """
@@ -30,59 +30,47 @@ class LayoutElement(NamedTuple):
     type: str
     score: float
 
-# --- Configuración del nuevo modelo YOLOv10 ---
+# --- Configuración del nuevo modelo YOLOv10 (sin cambios) ---
 
-# Mapeo de las clases del modelo YOLO a los tipos que usábamos ("TextRegion", "ImageRegion")
-# DocLayout-YOLO detecta más clases, las agrupamos según su naturaleza.
 YOLO_LABEL_MAP = {
     'plain text': 'TextRegion',     # Párrafos de texto
     'title': 'TextRegion',          # Títulos
     'list': 'TextRegion',           # Listas
-    'table': 'ImageRegion',          # Tratamos las tablas como texto para OCR/traducción
+    'table': 'ImageRegion',         # Tratamos las tablas como imagen para no hacer OCR
     'figure': 'ImageRegion',        # Figuras o imágenes
-    #'header': 'TextRegion',         # Encabezados de página
-    #'footer': 'TextRegion',         # Pies de página
     'section-header': 'TextRegion', # Encabezados de sección
     'figure_caption': 'TextRegion', # Leyendas de figuras
     'table_caption': 'TextRegion',
     'table_footnote': 'TextRegion',  # Leyendas de tablas
-    'isolate_formula': 'ImageRegion',
-    'formula_caption': 'TextRegion',       # Fórmulas (pueden ser tratadas como imagen si el OCR falla)
-    'abandon': 'ImageRegion',
+    'isolate_formula': 'ImageRegion',# Fórmulas aisladas como imagen
+    'formula_caption': 'TextRegion', # Pie de fórmulas como texto
+    'abandon': 'ImageRegion',        # Elementos a ignorar
 }
 
-# Configuración del modelo YOLOv10 local (pre-descargado en la imagen Docker)
 YOLO_MODEL_CONFIG = {
     "yolov10_doc": {
         "local_path": "/app/models/doclayout_yolo_docstructbench_imgsz1024.pt"
     }
 }
 
+# --- LÓGICA DE PRECARGA DEL MODELO ---
+LAYOUT_MODEL: YOLOv10 = None
+
+# 2. La clase `LayoutModel` (ligeramente adaptada para ser llamada una sola vez)
 class LayoutModel:
-    _instances = {}  # Diccionario para almacenar instancias por tipo de modelo
 
-    def __new__(cls, model_type="yolov10_doc"):
-        """Garantiza que solo se cree una instancia por tipo de modelo."""
-        if model_type not in cls._instances:
-            instance = super(LayoutModel, cls).__new__(cls)
-            instance._initialize_model(model_type)
-            cls._instances[model_type] = instance
-        return cls._instances[model_type]
-
-    def _initialize_model(self, model_type):
+    def __init__(self, model_type="yolov10_doc"):
         """Inicializa el modelo YOLOv10 usando el archivo local pre-descargado."""
         try:
-            if model_type not in YOLO_MODEL_CONFIG:
-                logger.warning(f"Modelo {model_type} no encontrado, usando yolov10_doc")
-                model_type = "yolov10_doc"
-
-            config = YOLO_MODEL_CONFIG[model_type]
+            config = YOLO_MODEL_CONFIG.get(model_type)
+            if not config:
+                 logger.warning(f"Modelo {model_type} no encontrado, usando yolov10_doc")
+                 config = YOLO_MODEL_CONFIG["yolov10_doc"]
+            
             local_path = config['local_path']
             
-            # Verificar que el archivo local existe
             if not os.path.exists(local_path):
-                raise FileNotFoundError(f"El modelo no se encuentra en {local_path}. "
-                                      "Asegúrate de que la imagen Docker se construyó correctamente.")
+                raise FileNotFoundError(f"El modelo no se encuentra en {local_path}. Asegúrate de que la imagen Docker se construyó correctamente.")
             
             logger.info(f"Cargando modelo {model_type} desde archivo local: {local_path}")
             self.model = YOLOv10(local_path)
@@ -90,36 +78,43 @@ class LayoutModel:
             logger.info(f"Modelo {model_type} cargado correctamente desde archivo local")
             
         except Exception as e:
-            logger.error(f"Error cargando el modelo {model_type}: {e}")
+            logger.error(f"Error cargando el modelo {model_type}: {e}", exc_info=True)
             raise
 
     def get_model(self):
-        """Devuelve la instancia del modelo."""
+        """Devuelve la instancia del modelo subyacente (YOLOv10)."""
         return self.model
 
-logger.info("Inicializando el modelo de layout global...")
-LAYOUT_MODEL_INSTANCE = LayoutModel().get_model()
-logger.info("El modelo de layout global ha sido inicializado.")
-
-
-def get_layout(image: Image.Image, model_type="yolov10_doc", confidence: float = 0.45) -> List[LayoutElement]:
+# 3. La función que Celery llamará para inicializar el modelo
+def initialize_layout_model():
     """
-    Obtiene el layout de una imagen usando el modelo YOLOv10 especificado.
-    
-    Args:
-        image: Imagen a procesar (en formato PIL.Image o ruta de archivo).
-        model_type: Tipo de modelo a usar (actualmente solo 'yolov10_doc').
-    
-    Returns:
-        Una lista de objetos LayoutElement, que es el análogo al antiguo lp.Layout.
+    Crea una instancia de LayoutModel y guarda el modelo YOLOv10 en la variable global.
+    Esta función será llamada por la señal `worker_process_init` de Celery.
     """
+    global LAYOUT_MODEL
+    if LAYOUT_MODEL is None:
+        logger.info("Inicializando el modelo de layout para este proceso worker...")
+        # Instanciamos la clase contenedora
+        model_wrapper = LayoutModel()
+        # Guardamos la instancia del modelo real en nuestra variable global
+        LAYOUT_MODEL = model_wrapper.get_model()
+    else:
+        logger.info("El modelo de layout ya está inicializado en este proceso.")
+
+# --- FUNCIONES QUE USAN EL MODELO PRECARGADO ---
+
+def get_layout(image: Image.Image, confidence: float = 0.45) -> List[LayoutElement]:
+    """
+    Obtiene el layout de una imagen usando el modelo YOLOv10 que ha sido PRECARGADO.
+    """
+    # 4. Verificamos que el modelo está cargado y lo usamos
+    if LAYOUT_MODEL is None:
+        # Si esto ocurre, es un error de configuración. El worker debería haberlo cargado.
+        raise RuntimeError("FATAL: El modelo de layout no fue inicializado por el worker de Celery. Revisa la conexión de la señal 'worker_process_init' en tasks.py.")
+
     try:
-        model = LayoutModel(model_type).get_model()
-        
-        # El modelo YOLOv10 espera una ruta de archivo o un array numpy, no un objeto PIL directamente.
-        # Si la entrada es un objeto PIL, debemos convertirla.
-        # Por simplicidad, el ejemplo de la librería usa rutas, pero se puede adaptar para numpy.
-        det_results = LAYOUT_MODEL_INSTANCE.predict(
+        # Usamos directamente el modelo que ya está en la memoria del worker
+        det_results = LAYOUT_MODEL.predict(
             source=image,
             conf=confidence,
             device="cpu"
@@ -135,7 +130,6 @@ def get_layout(image: Image.Image, model_type="yolov10_doc", confidence: float =
             x1, y1, x2, y2, score, class_id = det.tolist()
             class_name = detections.names[int(class_id)]
             
-            # Mapear la clase detectada a nuestro tipo estándar ("TextRegion", "ImageRegion")
             region_type = YOLO_LABEL_MAP.get(class_name)
             
             if region_type:
@@ -147,41 +141,24 @@ def get_layout(image: Image.Image, model_type="yolov10_doc", confidence: float =
         
         return layout
     except Exception as e:
-        logger.error(f"Error al obtener el layout de la imagen: {e}")
+        logger.error(f"Error al obtener el layout de la imagen con el modelo precargado: {e}", exc_info=True)
         return []
 
 
 def merge_overlapping_text_regions(layout: List[LayoutElement]) -> Tuple[List[Tuple[Rectangle, str]], List[Tuple[LayoutElement, str]]]:
     """
-    [VERSIÓN MODIFICADA - SIN FUSIÓN]
+    [VERSIÓN SIN FUSIÓN]
     Separa las regiones de texto y de imagen del layout detectado.
-    La fusión con unary_union ha sido desactivada, ya que el modelo YOLOv10
-    suele generar bloques de texto coherentes que no necesitan ser fusionados.
-
-    Args:
-        layout (List[LayoutElement]): Layout detectado por el modelo.
-
-    Returns:
-        Tuple[List[Tuple[Rectangle, str]], List[Tuple[LayoutElement, str]]]:
-            Una tupla con:
-            1. Regiones de texto originales como (Rectangle, "TextRegion").
-            2. Regiones de imagen originales como (LayoutElement, "ImageRegion").
     """
-    logger.info("Separando regiones de texto e imagen sin fusionar.")
-    
-    # Simplemente extraemos las regiones de texto y las devolvemos con el formato esperado.
-    # El formato de retorno para texto es List[Tuple[Rectangle, str]]
     text_regions = [
         (element.box, "TextRegion")
         for element in layout
         if element.type == "TextRegion"
     ]
 
-    # El formato para imágenes es List[Tuple[LayoutElement, str]]
     image_regions = [
         (element, "ImageRegion")
         for element in layout
         if element.type == "ImageRegion"
     ]
-
     return text_regions, image_regions

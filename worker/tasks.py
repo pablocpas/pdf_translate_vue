@@ -1,5 +1,6 @@
 # tasks.py - Refactorizado para usar S3/MinIO
-
+from celery.signals import worker_process_init
+from src.domain.layout import initialize_layout_model
 from celery import Celery, current_task, group, chord
 import os
 from pathlib import Path
@@ -37,6 +38,16 @@ celery_app = Celery(
     broker=os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0'),
     backend=os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
 )
+
+@worker_process_init.connect(sender=None)
+def on_worker_init(**kwargs):
+    """
+    Esta función se ejecuta automáticamente UNA VEZ por cada proceso worker
+    cuando arranca.
+    """
+    logger.info("Señal 'worker_process_init' recibida. Inicializando modelos...")
+    initialize_layout_model()
+    logger.info("Modelos inicializados correctamente para este worker.")
 
 def process_page_with_existing_pipeline(page_image: Image.Image, src_lang: str, tgt_lang: str, language_model: str, confidence: float) -> Dict[str, Any]:
     """
