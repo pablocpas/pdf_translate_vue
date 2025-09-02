@@ -63,5 +63,6 @@ COPY --chown=appuser . .
 
 # Añade el directorio de binarios del usuario al PATH
 ENV PATH="/home/appuser/.local/bin:${PATH}"
-# Comando para iniciar la aplicación
-CMD ["celery", "-A", "tasks", "worker", "--loglevel=info"]
+# Comando para iniciar la aplicación con gevent pool para soporte async
+# --concurrency=8 ajustado para el rendimiento óptimo (debe ser experimentalmente determinado)
+CMD ["celery", "-A", "tasks", "worker", "--loglevel=INFO", "-P", "gevent", "--concurrency=8"]

@@ -82,26 +82,7 @@ app.add_middleware(
 )
 
 # --- HELPERS ---
-def get_final_task_result(task_id: str) -> Optional[AsyncResult]:
-    """
-    Sigue la cadena de tareas desde la orquestadora hasta la finalizadora.
-    """
-    orchestrator_task = AsyncResult(task_id, app=celery_app)
-    
-    if orchestrator_task.state == 'FAILURE':
-        return orchestrator_task
-    
-    if orchestrator_task.state == 'SUCCESS':
-        try:
-            result = orchestrator_task.result
-            if isinstance(result, dict) and 'result_task_id' in result:
-                final_task_id = result['result_task_id']
-                return AsyncResult(final_task_id, app=celery_app)
-        except Exception as e:
-            logger.warning(f"Error obteniendo resultado final de {task_id}: {e}")
-            return orchestrator_task
-    
-    return orchestrator_task
+# Helpers simplificados para arquitectura monolítica
 
 # --- ENDPOINTS ---
 
@@ -126,8 +107,8 @@ async def translate_pdf_endpoint(
         # Leer contenido del archivo
         file_content = await file.read()
         
-        # Lanzar tarea de orquestación con los nuevos parámetros
-        result = celery_app.send_task('translate_pdf_orchestrator', args=[file_content, srcLang, tgtLang, languageModel, confidence])
+        # Lanzar nueva tarea monolítica con los nuevos parámetros
+        result = celery_app.send_task('translate_pdf_task', args=[file_content, srcLang, tgtLang, languageModel, confidence])
         
         # Usar el ID de Celery como task_id único para todo
         task_id = result.id
@@ -144,30 +125,14 @@ async def translate_pdf_endpoint(
 async def get_task_status(task_id: str):
     """
     Obtiene el estado de una tarea de traducción.
-    Esta versión es más simple y robusta, confiando en el estado de Celery.
+    Versión simplificada para arquitectura monolítica.
     """
     try:
-        orchestrator_task = AsyncResult(task_id, app=celery_app)
+        # Con una sola tarea, la lógica es mucho más simple
+        task = AsyncResult(task_id, app=celery_app)
         
-        state = orchestrator_task.state
-        info = orchestrator_task.info or {}
-        
-        # Si la tarea orquestadora tuvo éxito, obtenemos la tarea final
-        if state == 'SUCCESS' and isinstance(info, dict) and 'result_task_id' in info:
-            final_task_id = info['result_task_id']
-            final_task = AsyncResult(final_task_id, app=celery_app)
-            final_state = final_task.state
-            final_info = final_task.info or {}
-            
-            # Mantener progreso durante transición - si la tarea final está PENDING,
-            # mantener el progreso de la orquestadora
-            if final_state == 'PENDING':
-                # Mantener estado de procesamiento con traducción de contenido
-                state = 'PROGRESS'
-                info = {'status': 'Traduciendo contenido'}
-            else:
-                state = final_state
-                info = final_info
+        state = task.state
+        info = task.info or {}
         
         logger.info(f"Reportando estado para {task_id}: Celery state={state}, info={info}")
 
@@ -182,7 +147,8 @@ async def get_task_status(task_id: str):
             # Mapear el texto del progreso al enum de Pydantic
             step_map = {
                 "Preparando documento": ProcessingStep.UPLOADING_PDF,
-                "Analizando páginas": ProcessingStep.CONVERTING_PDF,
+                "Convirtiendo páginas a imágenes": ProcessingStep.CONVERTING_PDF,
+                "Analizando estructura del documento": ProcessingStep.CONVERTING_PDF,
                 "Traduciendo contenido": ProcessingStep.PROCESSING_PAGES,
                 "Finalizando documento": ProcessingStep.COMBINING_PDF,
             }
@@ -203,7 +169,7 @@ async def get_task_status(task_id: str):
         # Construir la respuesta final
         error_message = None
         if status == TaskStatus.FAILED:
-            error_message = str(orchestrator_task.traceback) if orchestrator_task.traceback else "Error desconocido en la tarea."
+            error_message = str(task.traceback) if task.traceback else "Error desconocido en la tarea."
         
         task_response = TranslationTask(
             id=task_id,
@@ -224,14 +190,15 @@ async def get_task_status(task_id: str):
 async def get_translated_pdf(task_id: str):
     """
     Devuelve URL prefirmada para visualizar el PDF traducido.
+    Versión simplificada para arquitectura monolítica.
     """
     try:
-        # Obtener la clave real del resultado de la tarea
-        final_task = get_final_task_result(task_id)
-        if not final_task or final_task.state != 'SUCCESS':
+        # Con arquitectura monolítica, solo verificamos una tarea
+        task = AsyncResult(task_id, app=celery_app)
+        if not task or task.state != 'SUCCESS':
             raise HTTPException(status_code=404, detail="Tarea no completada o no encontrada")
         
-        info = final_task.info or {}
+        info = task.info or {}
         
         # Usar translated_key del resultado si está disponible
         if isinstance(info, dict) and 'translated_key' in info:
@@ -361,11 +328,11 @@ async def update_translation_data(task_id: str, translation_data: TranslationDat
         
         # Actualizar datos de traducción en S3
         translation_key = f"{task_id}/translated/translated_translation_data.json"
-        updated_data = json.dumps(translation_data.dict(), ensure_ascii=False, indent=2).encode()
+        updated_data = json.dumps(translation_data.model_dump(), ensure_ascii=False, indent=2).encode()
         upload_bytes(translation_key, updated_data, "application/json")
         
         # Regenerar PDF con nuevos datos
-        result = celery_app.send_task('regenerate_pdf_s3', args=[task_id, translation_data.dict(), position_data])
+        result = celery_app.send_task('regenerate_pdf_s3', args=[task_id, translation_data.model_dump(), position_data])
         task_result = result.get(timeout=60)
         
         if "error" in task_result:

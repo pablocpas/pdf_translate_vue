@@ -1,12 +1,18 @@
 import json
 import logging
 from typing import List
-from pydantic import BaseModel
-from openai import OpenAI
+from pydantic import BaseModel, ValidationError
+from openai import OpenAI, AsyncOpenAI
 from ...infrastructure.config.settings import settings
 
 # Configura el cliente con tu base_url y API Key de OpenRouter o OpenAI:
 client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=settings.OPENAI_API_KEY,
+)
+
+# Cliente asíncrono para llamadas concurrentes
+async_client = AsyncOpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=settings.OPENAI_API_KEY,
 )
@@ -114,5 +120,83 @@ def translate_text(texts: List[str], target_language: str, language_model: str =
 
     except Exception as e:
         logging.error(f"Translation error: {e}")
+        # Fallback: devolver los textos originales en caso de fallo.
+        return texts
+
+
+async def translate_text_async(texts: List[str], target_language: str, language_model: str = "openai/gpt-4o-mini") -> List[str]:
+    """
+    Asynchronous version of translate_text that uses AsyncOpenAI for concurrent API calls.
+    Translates a list of texts into the specified language using
+    OpenAI's chat completions API with JSON response format.
+
+    Args:
+        texts (List[str]): List of texts to translate.
+        target_language (str): Target language ISO code (e.g. 'es', 'en').
+        language_model (str): Language model to use for translation.
+
+    Returns:
+        List[str]: The translated texts in the same order.
+    """
+    # Si la lista está vacía, devolverla tal cual:
+    if not texts:
+        return []
+
+    # Convertimos el código ISO a nombre de idioma (o usamos el código si no está en el dict).
+    language_name = LANGUAGE_MAP.get(target_language.lower(), target_language)
+
+    # Mensaje system que indica al modelo qué hacer y cómo formatear la salida.
+    system_prompt = (
+        f"You are a professional translator. Translate each of the following texts into {language_name}. "
+        "Preserve the original formatting and order. Return valid JSON with a 'translations' field, "
+        "an array of strings that exactly matches the number of input texts."
+    )
+
+    # Mensaje user que incluye la lista de textos en JSON.
+    user_prompt = (
+        "Here is the list of texts in JSON. "
+        "Return only the 'translations' in the same order:\n\n"
+        f"{json.dumps(texts, ensure_ascii=False, indent=2)}"
+    )
+
+    try:
+        # Llamada asíncrona con response_format para forzar respuesta JSON.
+        response = await async_client.chat.completions.create(
+            model=language_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0
+        )
+
+        # Extraemos el contenido de la respuesta JSON y lo parseamos
+        response_content = response.choices[0].message.content
+        if not response_content:
+            raise ValueError("Empty response from API")
+        
+        json_data = json.loads(response_content)
+        
+        # Validamos usando el modelo Pydantic
+        parsed_response = TranslationResponse.model_validate(json_data)
+        
+        # Validamos que la longitud de las traducciones coincida con los textos de entrada.
+        if len(parsed_response.translations) != len(texts):
+            raise ValueError(
+                f"Number of translations ({len(parsed_response.translations)}) "
+                f"does not match input texts ({len(texts)})."
+            )
+
+        return parsed_response.translations
+
+    except json.JSONDecodeError as e:
+        logging.error(f"JSON decode error in async translation: {e}")
+        return texts
+    except ValidationError as e:
+        logging.error(f"Pydantic validation error in async translation: {e}")
+        return texts
+    except Exception as e:
+        logging.error(f"Async translation error: {e}")
         # Fallback: devolver los textos originales en caso de fallo.
         return texts

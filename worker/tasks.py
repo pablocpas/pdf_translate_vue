@@ -1,23 +1,22 @@
-# tasks.py - Refactorizado para usar S3/MinIO
+# tasks.py - Refactorizado para arquitectura "Todo en Uno"
 from celery.signals import worker_process_init
 from src.domain.translator.layout import initialize_layout_model
-from celery import Celery, current_task, group, chord
+from celery import Celery
 import os
-from pathlib import Path
 import logging
 import json
-import tempfile
 import time
+import asyncio
 from typing import List, Dict, Any
 from io import BytesIO
 
-from botocore.exceptions import FlexibleChecksumError
 
 
 # Imports del proyecto
-from src.domain.translator.processor import extract_and_translate_page_data, get_font_for_language, adjust_paragraph_font_size
+from src.domain.translator.processor import extract_and_translate_page_data, get_layout_in_batch, get_font_for_language, adjust_paragraph_font_size
 from src.infrastructure.config.settings import MARGIN, settings
 from src.infrastructure.storage.s3 import upload_bytes, download_bytes, presigned_get_url
+from src.domain.translator.pdf_utils import get_page_dimensions_from_image
 
 # Imports de terceros
 from reportlab.pdfgen import canvas
@@ -49,26 +48,6 @@ def on_worker_init(**kwargs):
     initialize_layout_model()
     logger.info("Modelos inicializados correctamente para este worker.")
 
-def process_page_with_existing_pipeline(page_image: Image.Image, src_lang: str, tgt_lang: str, language_model: str, confidence: float) -> Dict[str, Any]:
-    """
-    Wrapper para el pipeline existente que procesa una página.
-    Convierte objeto Image PIL a archivo temporal para usar con extract_and_translate_page_data.
-    """
-    # Guardar imagen temporalmente para usar con el pipeline existente
-    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_file:
-        page_image.save(temp_file.name, format='PNG')
-        temp_path = temp_file.name
-    
-    try:
-        # Usar el pipeline existente con los nuevos parámetros
-        result = extract_and_translate_page_data(temp_path, tgt_lang, language_model, confidence)
-        return result
-    finally:
-        # Limpiar archivo temporal
-        try:
-            os.unlink(temp_path)
-        except:
-            pass
 
 def build_translated_pdf(results_list: List[Dict[str, Any]], task_id: str, target_language: str) -> bytes:
     """
@@ -137,35 +116,32 @@ def build_translated_pdf(results_list: List[Dict[str, Any]], task_id: str, targe
     buffer.seek(0)
     return buffer.getvalue()
 
-@celery_app.task(name='translate_pdf_orchestrator', bind=True)
-def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lang: str, language_model: str = "openai/gpt-4o-mini", confidence: float = 0.45):
+@celery_app.task(name='translate_pdf_task', bind=True)
+async def translate_pdf_task(self, file_content: bytes, src_lang: str, tgt_lang: str, language_model: str = "openai/gpt-4o-mini", confidence: float = 0.45):
     """
-    Tarea orquestadora que recibe PDF bytes, sube a S3, convierte a imágenes y lanza procesamiento paralelo.
+    Tarea monolítica "Todo en Uno" que procesa un PDF completo con optimizaciones de batching y async I/O.
     """
     try:
-        # El task_id es el ID de esta tarea de Celery
         task_id = self.request.id
-        logger.info(f"Iniciando orquestación S3 para tarea {task_id} -> {tgt_lang}")
+        logger.info(f"Iniciando procesamiento completo para tarea {task_id} -> {tgt_lang}")
         
-        # 1. Subir PDF original a S3
+        # 1. Preparación: subir PDF original y convertir a imágenes
         self.update_state(state='PROGRESS', meta={'status': 'Preparando documento'})
         original_key = f"{task_id}/original.pdf"
         upload_bytes(original_key, file_content, content_type="application/pdf")
         logger.info(f"PDF subido a S3: {original_key}")
-                
-        # 2. Convertir PDF a imágenes
-        self.update_state(state='PROGRESS', meta={'status': 'Analizando páginas'})
+        
+        self.update_state(state='PROGRESS', meta={'status': 'Convirtiendo páginas a imágenes'})
         start_pdf_conversion = time.time()
         images = convert_from_bytes(file_content, fmt="png", dpi=300)
         pdf_conversion_time = time.time() - start_pdf_conversion
-        logger.info(f"=== PDF CONVERSION TIMING ===")
-        logger.info(f"PDF to images conversion: {pdf_conversion_time:.3f}s")
-        logger.info("=" * 30)
         
         if not images:
             raise Exception("No se pudieron generar imágenes del PDF.")
         
-        # 3. Subir cada imagen a S3
+        logger.info(f"PDF convertido a {len(images)} imágenes en {pdf_conversion_time:.3f}s")
+        
+        # 2. Subir imágenes a S3 para referencia posterior
         page_keys = []
         for idx, img in enumerate(images):
             buf = BytesIO()
@@ -174,107 +150,61 @@ def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lan
             upload_bytes(png_key, buf.getvalue(), content_type="image/png")
             page_keys.append(png_key)
         
-        logger.info(f"Subidas {len(page_keys)} imágenes a S3")
+        # 3. Inferencia de layout en lote (optimización clave)
+        self.update_state(state='PROGRESS', meta={'status': 'Analizando estructura del documento'})
+        start_batch_layout = time.time()
+        batch_layouts = get_layout_in_batch(images, confidence=confidence, batch_size=8)
+        batch_layout_time = time.time() - start_batch_layout
+        logger.info(f"Layout batch processing completado en {batch_layout_time:.3f}s para {len(images)} páginas")
         
-        # 4. Lanzar procesamiento paralelo con chord
+        # 4. Obtener dimensiones de cada página
+        page_dimensions = []
+        for idx, img in enumerate(images):
+            # Simular archivo temporal para get_page_dimensions_from_image
+            buf = BytesIO()
+            img.save(buf, format="PNG")
+            buf.seek(0)
+            
+            # Usar las dimensiones de la imagen directamente (más eficiente)
+            width_pts = img.width * 72 / 300  # DPI conversion
+            height_pts = img.height * 72 / 300
+            page_dimensions.append((width_pts, height_pts))
+        
+        # 5. Procesamiento concurrente de páginas (async I/O para traducciones)
         self.update_state(state='PROGRESS', meta={'status': 'Traduciendo contenido'})
+        start_concurrent = time.time()
         
-        job = group(
-            process_page_task.s(task_id, i, key, src_lang, tgt_lang, language_model, confidence) 
-            for i, key in enumerate(page_keys)
-        )
+        # Crear corrutinas para cada página
+        translation_coroutines = []
+        for idx, (img, layout) in enumerate(zip(images, batch_layouts)):
+            width_pts, height_pts = page_dimensions[idx]
+            coro = extract_and_translate_page_data(
+                img, layout, tgt_lang, language_model, width_pts, height_pts
+            )
+            translation_coroutines.append(coro)
         
-        # 5. Chord con finalizador
-        result = chord(job)(finalize_task.s(task_id, original_key, src_lang, tgt_lang))
+        # Ejecutar todas las traducciones concurrentemente
+        results_list = await asyncio.gather(*translation_coroutines)
+        concurrent_time = time.time() - start_concurrent
+        logger.info(f"Procesamiento concurrente completado en {concurrent_time:.3f}s")
         
-        logger.info(f"Chord iniciado. Tarea finalizadora ID: {result.id}")
+        # 6. Agregar números de página a los resultados
+        for idx, result in enumerate(results_list):
+            result["page_number"] = idx
+            if "error" not in result:
+                result["error"] = None
         
-        return {
-            'status': 'PROCESSING',
-            'message': f'Procesamiento paralelo iniciado para {len(page_keys)} páginas.',
-            'result_task_id': result.id
-        }
-        
-    except Exception as e:
-        logger.error(f"Error en orquestación: {e}", exc_info=True)
-        self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)})
-        return {"status": "failed", "error": str(e)}
-
-
-@celery_app.task(
-    name='process_page_task', 
-    bind=True,
-    # Configuración de reintentos:
-    autoretry_for=(FlexibleChecksumError,), # Reintenta SÓLO para este error
-    retry_kwargs={'max_retries': 3},       # Inténtalo un máximo de 3 veces
-    retry_backoff=True,                    # Espera exponencial entre reintentos (e.g., 1s, 2s, 4s)
-    retry_backoff_max=60                   # Espera máxima de 60 segundos
-)
-def process_page_task(self, task_id: str, page_number: int, image_key: str, src_lang: str, tgt_lang: str, language_model: str, confidence: float):
-    """
-    Tarea worker: descarga imagen de S3, procesa página y devuelve resultados.
-    """
-    try:
-        logger.info(f"Procesando página {page_number} de tarea {task_id}: {image_key}")
-        
-        # 1. Descargar imagen desde S3
-        img_bytes = download_bytes(image_key)
-        page_image = Image.open(BytesIO(img_bytes)).convert("RGB")
-        
-        # 2. Procesar página con pipeline existente
-        result = process_page_with_existing_pipeline(page_image, src_lang, tgt_lang, language_model, confidence)
-        
-        # 3. Añadir número de página
-        result["page_number"] = page_number
-        result["error"] = None
-        
-        logger.info(f"Página {page_number} procesada exitosamente")
-        return result
-    
-    except FlexibleChecksumError as e:
-        # Celery gestionará el reintento automáticamente gracias a 'autoretry_for'.
-        # Este bloque se ejecutará, pero la tarea será reenviada.
-        logger.warning(f"Checksum error en página {page_number}. Reintentando... Error: {e}")
-        raise # Es importante relanzar la excepción para que Celery la capture.
-        
-    except Exception as e:
-        logger.error(f"Error procesando página {page_number}: {e}", exc_info=True)
-        # Devolver error mapeado para evitar que reviente el chord
-        return {
-            "page_number": page_number,
-            "text_regions": [],
-            "image_regions": [],
-            "page_dimensions": None,
-            "error": str(e),
-        }
-
-
-@celery_app.task(name='finalize_task', bind=True)
-def finalize_task(self, results_list: List[Dict[str, Any]], task_id: str, original_key: str, src_lang: str, tgt_lang: str):
-    """
-    Tarea finalizadora: reconstruye PDF traducido y lo sube a S3.
-    """
-    try:
-        logger.info(f"Finalizando tarea {task_id} con {len(results_list)} páginas")
-        
-        # 1. Ordenar resultados por número de página
-        results_list.sort(key=lambda r: r.get("page_number", 0))
-        
+        # 7. Finalización: construir PDF final
         self.update_state(state='PROGRESS', meta={'status': 'Finalizando documento'})
-        
-        # 2. Construir PDF traducido
         start_pdf_build = time.time()
         translated_pdf_bytes = build_translated_pdf(results_list, task_id, tgt_lang)
         pdf_build_time = time.time() - start_pdf_build
-        logger.info(f"=== PDF RECONSTRUCTION TIMING ===")
-        logger.info(f"PDF reconstruction: {pdf_build_time:.3f}s")
-        logger.info("=" * 40)
         
-        # 3. Subir PDF final a S3
+        # 8. Subir PDF traducido a S3
         translated_key = f"{task_id}/translated/translated.pdf"
         upload_bytes(translated_key, translated_pdf_bytes, content_type="application/pdf")
         
-        # 4. Construir y subir metadatos de traducción
+        # 9. Construir y subir metadatos
         translation_data = {
             "pages": [
                 {
@@ -310,16 +240,15 @@ def finalize_task(self, results_list: List[Dict[str, Any]], task_id: str, origin
             ]
         }
         
-        # 5. Subir metadatos a S3
+        # 10. Subir metadatos a S3
         translation_key = f"{task_id}/translated/translated_translation_data.json"
         position_key = f"{task_id}/translated/translated_translation_data_position.json"
         
         upload_bytes(translation_key, json.dumps(translation_data, ensure_ascii=False, indent=2).encode(), "application/json")
         upload_bytes(position_key, json.dumps(position_data, ensure_ascii=False, indent=2).encode(), "application/json")
         
-        # 6. Generar metadatos de resultado
+        # 11. Generar metadatos de resultado
         errors = [r["error"] for r in results_list if r["error"]]
-        
         meta_data = {
             "pages": len(results_list),
             "errors": errors,
@@ -330,6 +259,16 @@ def finalize_task(self, results_list: List[Dict[str, Any]], task_id: str, origin
         
         meta_key = f"{task_id}/translated/metadata.json"
         upload_bytes(meta_key, json.dumps(meta_data, ensure_ascii=False, indent=2).encode(), "application/json")
+        
+        # Timing summary
+        total_time = pdf_conversion_time + batch_layout_time + concurrent_time + pdf_build_time
+        logger.info(f"=== COMPLETE TASK TIMING SUMMARY ===")
+        logger.info(f"PDF conversion: {pdf_conversion_time:.3f}s")
+        logger.info(f"Batch layout: {batch_layout_time:.3f}s")
+        logger.info(f"Concurrent processing: {concurrent_time:.3f}s")
+        logger.info(f"PDF reconstruction: {pdf_build_time:.3f}s")
+        logger.info(f"Total processing time: {total_time:.3f}s")
+        logger.info("=" * 40)
         
         logger.info(f"Tarea {task_id} completada exitosamente")
         
@@ -343,9 +282,11 @@ def finalize_task(self, results_list: List[Dict[str, Any]], task_id: str, origin
         }
         
     except Exception as e:
-        logger.error(f"Error en finalización de tarea {task_id}: {e}", exc_info=True)
+        logger.error(f"Error en tarea monolítica {task_id}: {e}", exc_info=True)
         self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)})
         return {"status": "failed", "error": str(e)}
+
+
 
 
 
@@ -358,8 +299,7 @@ def regenerate_pdf_s3_task(task_id: str, translation_data: dict, position_data: 
     try:
         logger.info(f"Regenerando PDF desde S3 para tarea {task_id}")
         
-        # Descargar PDF original y metadatos
-        original_key = f"{task_id}/original.pdf"
+        # Procesar metadatos
         
         # Determinar idioma de destino
         first_page = translation_data.get("pages", [])[0] if "pages" in translation_data else None

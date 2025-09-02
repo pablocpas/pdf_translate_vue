@@ -16,6 +16,7 @@ openai
 # Mantén las dependencias de tu aplicación, como Celery
 celery
 redis
+gevent  # Necesario para el pool asíncrono de Celery
 pdf2image==1.17.0
 numpy==1.24.4
 boto3>=1.26.0
