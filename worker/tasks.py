@@ -1,6 +1,6 @@
 # tasks.py - Refactorizado para usar S3/MinIO
 from celery.signals import worker_process_init
-from src.domain.layout import initialize_layout_model
+from src.domain.translator.layout import initialize_layout_model
 from celery import Celery, current_task, group, chord
 import os
 from pathlib import Path
