@@ -2,6 +2,7 @@ import logging
 import io
 import json
 import os
+import time
 from typing import List, Tuple, Any, Dict
 
 from PIL import Image
@@ -69,14 +70,25 @@ def extract_and_translate_page_data(image_path: str, target_language: str, langu
     los datos necesarios para la reconstrucción del PDF, sin dibujar.
     """
     try:
+        start_total = time.time()
+        timing_data = {}
+        
         logger.info(f"Procesando datos para la imagen: {image_path}")
+        
+        # 1. Carga de imagen
+        start_image_load = time.time()
         page_image = Image.open(image_path).convert("RGB")
-        
         page_width_pts, page_height_pts = get_page_dimensions_from_image(image_path)
+        timing_data['image_load'] = time.time() - start_image_load
         
+        # 2. Análisis de layout con doclayout
+        start_layout = time.time()
         layout = get_layout(page_image, confidence=confidence)
         text_layout_regions, image_layout_regions = merge_overlapping_text_regions(layout)
+        timing_data['layout_analysis'] = time.time() - start_layout
 
+        # 3. Extracción de texto con OCR
+        start_ocr = time.time()
         texts_to_translate = []
         region_metadata = []
         
@@ -126,8 +138,15 @@ def extract_and_translate_page_data(image_path: str, target_language: str, langu
                     }
                 })
         
+        timing_data['text_extraction'] = time.time() - start_ocr
+        
+        # 4. Traducción con LLM
+        start_translation = time.time()
         translated_texts = translate_text(texts_to_translate, target_language, language_model)
+        timing_data['llm_translation'] = time.time() - start_translation
 
+        # 5. Preparación de datos de salida
+        start_output = time.time()
         final_text_regions = []
         if len(translated_texts) == len(texts_to_translate):
             for i, translated_text in enumerate(translated_texts):
@@ -140,7 +159,6 @@ def extract_and_translate_page_data(image_path: str, target_language: str, langu
                 })
         else:
             logger.warning("La cantidad de traducciones no coincide con los textos originales. Saltando regiones de texto.")
-
 
         final_image_regions = []
         for i, (element, _) in enumerate(image_layout_regions):
@@ -156,11 +174,35 @@ def extract_and_translate_page_data(image_path: str, target_language: str, langu
                 },
                 "coordinates": {"x1": x1_px, "y1": y1_px, "x2": x2_px, "y2": y2_px}
             })
+        
+        timing_data['data_preparation'] = time.time() - start_output
+        timing_data['total_time'] = time.time() - start_total
+        
+        # Calcular y loguear porcentajes
+        total_time = timing_data['total_time']
+        if total_time > 0:
+            percentages = {
+                'image_load': (timing_data['image_load'] / total_time) * 100,
+                'layout_analysis': (timing_data['layout_analysis'] / total_time) * 100,
+                'text_extraction': (timing_data['text_extraction'] / total_time) * 100,
+                'llm_translation': (timing_data['llm_translation'] / total_time) * 100,
+                'data_preparation': (timing_data['data_preparation'] / total_time) * 100
+            }
+            
+            logger.info(f"=== TIMING ANALYSIS FOR PAGE {image_path} ===")
+            logger.info(f"Total time: {total_time:.3f}s")
+            logger.info(f"1. Image load: {timing_data['image_load']:.3f}s ({percentages['image_load']:.1f}%)")
+            logger.info(f"2. Layout analysis (doclayout): {timing_data['layout_analysis']:.3f}s ({percentages['layout_analysis']:.1f}%)")
+            logger.info(f"3. Text extraction (OCR): {timing_data['text_extraction']:.3f}s ({percentages['text_extraction']:.1f}%)")
+            logger.info(f"4. LLM translation: {timing_data['llm_translation']:.3f}s ({percentages['llm_translation']:.1f}%)")
+            logger.info(f"5. Data preparation: {timing_data['data_preparation']:.3f}s ({percentages['data_preparation']:.1f}%)")
+            logger.info("=" * 50)
             
         return {
             "text_regions": final_text_regions,
             "image_regions": final_image_regions,
-            "page_dimensions": {"width": page_width_pts, "height": page_height_pts}
+            "page_dimensions": {"width": page_width_pts, "height": page_height_pts},
+            "timing_data": timing_data
         }
 
     except Exception as e:

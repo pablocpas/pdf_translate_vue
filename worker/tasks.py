@@ -144,7 +144,12 @@ def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lan
                 
         # 2. Convertir PDF a imágenes
         self.update_state(state='PROGRESS', meta={'status': 'Analizando páginas'})
+        start_pdf_conversion = time.time()
         images = convert_from_bytes(file_content, fmt="png", dpi=300)
+        pdf_conversion_time = time.time() - start_pdf_conversion
+        logger.info(f"=== PDF CONVERSION TIMING ===")
+        logger.info(f"PDF to images conversion: {pdf_conversion_time:.3f}s")
+        logger.info("=" * 30)
         
         if not images:
             raise Exception("No se pudieron generar imágenes del PDF.")
@@ -247,7 +252,12 @@ def finalize_task(self, results_list: List[Dict[str, Any]], task_id: str, origin
         self.update_state(state='PROGRESS', meta={'status': 'Finalizando documento'})
         
         # 2. Construir PDF traducido
+        start_pdf_build = time.time()
         translated_pdf_bytes = build_translated_pdf(results_list, task_id, tgt_lang)
+        pdf_build_time = time.time() - start_pdf_build
+        logger.info(f"=== PDF RECONSTRUCTION TIMING ===")
+        logger.info(f"PDF reconstruction: {pdf_build_time:.3f}s")
+        logger.info("=" * 40)
         
         # 3. Subir PDF final a S3
         translated_key = f"{task_id}/translated/translated.pdf"
