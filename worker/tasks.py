@@ -39,7 +39,9 @@ celery_app = Celery(
 )
 
 # Event handler para precarga al iniciar el worker
-@celery_app.signal('worker_init')
+from celery.signals import worker_init
+
+@worker_init.connect
 def worker_init_handler(sender=None, **kwargs):
     """
     Se ejecuta cuando un worker inicia.
