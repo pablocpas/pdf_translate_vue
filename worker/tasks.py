@@ -29,7 +29,7 @@ from pdf2image import convert_from_bytes
 import io
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+#logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configure Celery
