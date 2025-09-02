@@ -97,6 +97,10 @@ class LayoutModel:
         """Devuelve la instancia del modelo."""
         return self.model
 
+logger.info("Inicializando el modelo de layout global...")
+LAYOUT_MODEL_INSTANCE = LayoutModel().get_model()
+logger.info("El modelo de layout global ha sido inicializado.")
+
 
 def get_layout(image: Image.Image, model_type="yolov10_doc", confidence: float = 0.45) -> List[LayoutElement]:
     """
