@@ -119,7 +119,7 @@ def get_layout(image: Image.Image, model_type="yolov10_doc", confidence: float =
         # El modelo YOLOv10 espera una ruta de archivo o un array numpy, no un objeto PIL directamente.
         # Si la entrada es un objeto PIL, debemos convertirla.
         # Por simplicidad, el ejemplo de la librería usa rutas, pero se puede adaptar para numpy.
-        det_results = model.predict(
+        det_results = LAYOUT_MODEL_INSTANCE.predict(
             source=image,
             conf=confidence,
             device="cpu"
