@@ -52,9 +52,16 @@ services:
       <<: *common-env
       TRANSLATED_FOLDER: /app/translated
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # Configuración para preload y performance
+      CELERY_WORKER_PREFETCH_MULTIPLIER: 1
+      CELERY_WORKER_MAX_TASKS_PER_CHILD: 10
+      CELERY_PRELOAD_MODELS: true
     depends_on:
       - redis
       - minio
+    # Configuración para múltiples workers si tienes CPU disponible
+    # deploy:
+    #   replicas: 2
 
   redis:
     image: redis:alpine

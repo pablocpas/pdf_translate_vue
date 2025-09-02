@@ -38,6 +38,28 @@ celery_app = Celery(
     backend=os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
 )
 
+# Event handler para precarga al iniciar el worker
+@celery_app.signal('worker_init')
+def worker_init_handler(sender=None, **kwargs):
+    """
+    Se ejecuta cuando un worker inicia.
+    Precarga todos los modelos y librerías pesadas.
+    """
+    try:
+        from preload_models import preload_heavy_imports, warm_up_models
+        logger.info("🔧 Worker iniciado, ejecutando precarga de modelos...")
+        
+        # Precarga de librerías
+        if preload_heavy_imports():
+            # Calentamiento de modelos
+            warm_up_models()
+            logger.info("✅ Worker listo con modelos precargados")
+        else:
+            logger.warning("⚠️ Worker iniciado pero con errores en precarga")
+            
+    except Exception as e:
+        logger.error(f"❌ Error en inicialización del worker: {e}")
+
 def process_page_with_existing_pipeline(page_image: Image.Image, src_lang: str, tgt_lang: str, language_model: str, confidence: float) -> Dict[str, Any]:
     """
     Wrapper para el pipeline existente que procesa una página.

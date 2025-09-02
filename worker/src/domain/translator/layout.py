@@ -1,12 +1,42 @@
 import logging
 from typing import List, Tuple, Any, NamedTuple
 from PIL import Image
-
-# Nuevas dependencias
-from doclayout_yolo import YOLOv10
-from shapely.geometry import box, Polygon, MultiPolygon, GeometryCollection
-from shapely.ops import unary_union
 import os
+
+# Imports optimizados para evitar carga repetida
+try:
+    # Intentar importar desde cache de preload
+    from preload_models import get_cached_model
+    _USE_PRELOAD_CACHE = True
+except ImportError:
+    _USE_PRELOAD_CACHE = False
+
+# Lazy imports - solo se cargan cuando se necesitan
+_YOLO_MODULE = None
+_SHAPELY_MODULES = None
+
+def _get_yolo_module():
+    """Lazy import de YOLOv10"""
+    global _YOLO_MODULE
+    if _YOLO_MODULE is None:
+        from doclayout_yolo import YOLOv10
+        _YOLO_MODULE = YOLOv10
+    return _YOLO_MODULE
+
+def _get_shapely_modules():
+    """Lazy import de módulos Shapely"""
+    global _SHAPELY_MODULES
+    if _SHAPELY_MODULES is None:
+        from shapely.geometry import box, Polygon, MultiPolygon, GeometryCollection
+        from shapely.ops import unary_union
+        _SHAPELY_MODULES = {
+            'box': box,
+            'Polygon': Polygon,
+            'MultiPolygon': MultiPolygon,
+            'GeometryCollection': GeometryCollection,
+            'unary_union': unary_union
+        }
+    return _SHAPELY_MODULES
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +102,19 @@ class LayoutModel:
     def _initialize_model(self, model_type):
         """Inicializa el modelo YOLOv10 usando el archivo local pre-descargado."""
         try:
+            # Intentar usar modelo precargado primero
+            if _USE_PRELOAD_CACHE:
+                try:
+                    cached_model = get_cached_model("yolo_model")
+                    if cached_model and hasattr(cached_model, 'model'):
+                        logger.info(f"Usando modelo {model_type} desde cache precargado")
+                        self.model = cached_model.model
+                        self.model_type = model_type
+                        return
+                except Exception as e:
+                    logger.warning(f"No se pudo usar modelo precargado, cargando desde archivo: {e}")
+            
+            # Fallback: cargar normalmente
             if model_type not in YOLO_MODEL_CONFIG:
                 logger.warning(f"Modelo {model_type} no encontrado, usando yolov10_doc")
                 model_type = "yolov10_doc"
@@ -85,6 +128,7 @@ class LayoutModel:
                                       "Asegúrate de que la imagen Docker se construyó correctamente.")
             
             logger.info(f"Cargando modelo {model_type} desde archivo local: {local_path}")
+            YOLOv10 = _get_yolo_module()
             self.model = YOLOv10(local_path)
             self.model_type = model_type
             logger.info(f"Modelo {model_type} cargado correctamente desde archivo local")
