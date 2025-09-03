@@ -221,8 +221,14 @@ def batch_layout_analysis_task(self, task_id: str, page_keys: List[str], src_lan
         result = chord(job)(finalize_task.s(task_id, original_key, src_lang, tgt_lang))
         
         logger.info(f"Chord de traducción iniciado. Tarea finalizadora ID: {result.id}")
-        # Devolvemos el ID de la tarea finalizadora para seguimiento
-        return {'status': 'Translation tasks dispatched', 'finalize_task_id': result.id}
+        
+        # CORRECCIÓN CLAVE:
+        # El resultado de ESTA tarea es un diccionario que le dice al frontend
+        # cuál es el siguiente ID que debe seguir.
+        return {
+            'status': 'CHAINING', # Un nuevo estado personalizado
+            'next_task_id': result.id 
+        }
 
     except Exception as e:
         logger.error(f"Error en análisis de layout en lote: {e}", exc_info=True)

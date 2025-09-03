@@ -269,12 +269,18 @@ const stopProgressSimulation = () => {
   }
 };
 
+// Variable para el ID de tarea actual que se está sondeando
+let currentTaskId = ref<string>('');
+
 const startPolling = (taskId: string) => {
   if (pollingInterval.value) clearInterval(pollingInterval.value);
+  
+  // Inicializar con el ID de la tarea inicial
+  currentTaskId.value = taskId;
 
   pollingInterval.value = window.setInterval(async () => {
     try {
-      const taskStatus = await getTranslationStatus(taskId);
+      const taskStatus = await getTranslationStatus(currentTaskId.value);
       const previousStep = currentTask.value?.progress?.step;
       currentTask.value = taskStatus;
       translationStore.setCurrentTask(taskStatus);
@@ -286,12 +292,31 @@ const startPolling = (taskId: string) => {
         stopProgressSimulation();
       }
 
-      if (taskStatus.status === 'COMPLETED') {
+      if (taskStatus.status === 'SUCCESS') {
+        // La tarea actual ha terminado con éxito. ¿Hay una siguiente tarea?
+        if (taskStatus.info && taskStatus.info.status === 'CHAINING' && taskStatus.info.next_task_id) {
+          console.log(`Chaining to new task: ${taskStatus.info.next_task_id}`);
+          // Actualizamos el ID y seguimos sondeando con el nuevo ID
+          currentTaskId.value = taskStatus.info.next_task_id;
+          // No limpiamos el intervalo, solo continuamos sondeando con el nuevo ID
+        } else {
+          // ¡Esta era la tarea final! El proceso ha terminado.
+          console.log('Processing finished!');
+          stopProgressSimulation();
+          clearInterval(pollingInterval.value!);
+          isNavigatingToResult.value = true;
+          
+          // Mostrar 100% y esperar un momento antes de navegar
+          setTimeout(() => {
+            router.push('/result');
+          }, 1500);
+        }
+      } else if (taskStatus.status === 'COMPLETED') {
+        // Para compatibilidad con el estado anterior
         stopProgressSimulation();
         clearInterval(pollingInterval.value!);
         isNavigatingToResult.value = true;
         
-        // Mostrar 100% y esperar un momento antes de navegar
         setTimeout(() => {
           router.push('/result');
         }, 1500);

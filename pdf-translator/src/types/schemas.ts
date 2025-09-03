@@ -18,13 +18,19 @@ export const translationProgressSchema = z.object({
 
 // 3. MODIFICADO: El esquema de la tarea ahora usa el nuevo esquema de progreso.
 // También ajusto el enum de 'status' para que use mayúsculas, como lo envía el backend.
+// Agregamos 'SUCCESS' para el encadenamiento de tareas.
 export const translationTaskSchema = z.object({
   id: z.string().min(1, 'ID is required'),
-  status: z.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']), // MAYÚSCULAS
+  status: z.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'SUCCESS']), // Agregado SUCCESS
   originalFile: z.string(),
   translatedFile: z.string().optional().nullable(),
   error: z.string().optional().nullable(),
   progress: translationProgressSchema.optional().nullable(), // Usa el nuevo esquema de progreso
+  // Campo 'info' para manejar el encadenamiento de tareas
+  info: z.object({
+    status: z.string().optional(),
+    next_task_id: z.string().optional(),
+  }).optional().nullable(),
 });
 
 // 4. NUEVO: Esquema para la respuesta completa de /translation-data/{id}
