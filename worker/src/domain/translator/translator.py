@@ -4,6 +4,7 @@ from typing import List
 from pydantic import BaseModel
 from openai import AsyncOpenAI
 from ...infrastructure.config.settings import settings
+from openai import APIConnectionError, RateLimitError, APIStatusError
 
 # Configura el cliente con tu base_url y API Key de OpenRouter o OpenAI:
 client = AsyncOpenAI(
@@ -111,6 +112,12 @@ async def translate_text_async(texts: List[str], target_language: str, language_
             )
 
         return parsed_response.translations
+
+
+    except (APIConnectionError, RateLimitError, APIStatusError) as e:
+            logging.error(f"Error de API al traducir: Código={e.status_code}, Respuesta={e.response.text}")
+            raise e  # Relanzar la excepción
+
 
     except Exception as e:
         logging.error(f"Translation error: {e}")
