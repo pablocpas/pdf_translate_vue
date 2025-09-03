@@ -1,8 +1,6 @@
-from reportlab.platypus import Paragraph
-from reportlab.lib.styles import ParagraphStyle
-import logging
 import os
-
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.platypus import Paragraph
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont

@@ -3,12 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from enum import Enum
-from typing import Optional, List, Any
-import uuid
-import os
 import json
 import logging
-from pathlib import Path
+import os
+from typing import Optional, List, Any
 from celery import Celery
 from celery.result import AsyncResult
 from fastapi.encoders import jsonable_encoder

@@ -1,6 +1,4 @@
 import logging
-import io
-import json
 import os
 import time
 from typing import List, Tuple, Any, Dict
@@ -8,16 +6,12 @@ from typing import List, Tuple, Any, Dict
 from PIL import Image
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import Paragraph
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 
 from .layout import merge_overlapping_text_regions
 from .ocr import extract_text_from_image
-from .utils import adjust_paragraph_font_size, clean_text
+from .utils import adjust_paragraph_font_size, clean_text, get_font_for_language
 from .pdf_utils import get_page_dimensions_from_image
 from ...infrastructure.config.settings import MARGIN, DEBUG_MODE
 

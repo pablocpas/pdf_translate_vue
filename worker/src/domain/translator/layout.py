@@ -1,12 +1,9 @@
 import logging
-from typing import List, Tuple, Any, NamedTuple
+import os
+from typing import List, Tuple, NamedTuple
 from PIL import Image
 
-# Nuevas dependencias
 from doclayout_yolo import YOLOv10
-from shapely.geometry import box, Polygon, MultiPolygon, GeometryCollection
-from shapely.ops import unary_union
-import os
 
 logger = logging.getLogger(__name__)
 
