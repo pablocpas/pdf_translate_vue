@@ -22,6 +22,8 @@ from .utils import adjust_paragraph_font_size, clean_text
 from .pdf_utils import get_page_dimensions_from_image
 from ...infrastructure.config.settings import MARGIN, DEBUG_MODE
 
+from .layout import get_layouts_in_batch, LayoutElement, Rectangle
+
 logger = logging.getLogger(__name__)
 
 # --- CONFIGURACIÓN DE FUENTES (Sin cambios) ---
@@ -64,155 +66,119 @@ def get_font_for_language(target_language: str) -> str:
 # Añade esta constante al principio del archivo processor.py o dentro de la función
 OCR_MARGIN_PERCENT = 0.015  # 2% de margen
 
-def extract_and_translate_page_data(image_path: str, target_language: str, language_model: str, confidence: float) -> Dict[str, Any]:
+def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float) -> List[Dict[str, Any]]:
     """
-    Procesa una sola imagen de página para extraer, traducir y estructurar
-    los datos necesarios para la reconstrucción del PDF, sin dibujar.
+    Procesa un lote de imágenes para realizar segmentación y OCR de forma eficiente.
+    1. Realiza la segmentación de layout para TODAS las páginas en un único lote.
+    2. Itera sobre cada página para:
+       a. Extraer todo su texto (OCR) región por región.
+       b. Ensamblar una estructura de datos con la información extraída (texto original, posiciones, etc.).
+    Esta función NO realiza la traducción.
     """
-    try:
-        start_total = time.time()
-        timing_data = {}
+    if not page_images:
+        return []
+    
+    start_total = time.time()
+    
+    # 1. SEGMENTACIÓN EN LOTE (LA GRAN OPTIMIZACIÓN)
+    start_layout = time.time()
+    layouts = get_layouts_in_batch(page_images, confidence=confidence, batch_size=len(page_images))
+    logger.info(f"Segmentación de layout para {len(page_images)} páginas completada en {time.time() - start_layout:.2f}s")
+    
+    # Lista para almacenar los resultados finales de cada página
+    final_results = []
+
+    # 2. PROCESAMIENTO PÁGINA POR PÁGINA (SOLO PARA OCR Y ENSAMBLAJE)
+    start_ocr_total = time.time()
+    for i, page_image in enumerate(page_images):
+        logger.info(f"Procesando OCR para página {i+1}/{len(page_images)}")
         
-        logger.info(f"Procesando datos para la imagen: {image_path}")
-        
-        # 1. Carga de imagen
-        start_image_load = time.time()
-        page_image = Image.open(image_path).convert("RGB")
-        page_width_pts, page_height_pts = get_page_dimensions_from_image(image_path)
-        timing_data['image_load'] = time.time() - start_image_load
-        
-        # 2. Análisis de layout con doclayout
-        start_layout = time.time()
-        layout = get_layout(page_image, confidence=confidence)
-        text_layout_regions, image_layout_regions = merge_overlapping_text_regions(layout)
-        timing_data['layout_analysis'] = time.time() - start_layout
-
-        # 3. Extracción de texto con OCR
-        start_ocr = time.time()
-        texts_to_translate = []
-        region_metadata = []
-        
-        for rect, _ in text_layout_regions:
-            x1_px, y1_px, x2_px, y2_px = rect
-
-            # --- NUEVA LÓGICA PARA AÑADIR MARGEN ---
-            box_width = x2_px - x1_px
-            box_height = y2_px - y1_px
+        try:
+            page_layout = layouts[i]
+            page_width_pts, page_height_pts = get_page_dimensions_from_image(page_image)
+            text_layout_regions, image_layout_regions = merge_overlapping_text_regions(page_layout)
             
-            # Calcula el margen en píxeles
-            margin_x = box_width * OCR_MARGIN_PERCENT
-            margin_y = box_height * OCR_MARGIN_PERCENT
+            # Lista para las regiones de texto de ESTA página
+            final_text_regions = []
             
-            # Expande las coordenadas
-            x1_expanded = x1_px - margin_x
-            y1_expanded = y1_px - margin_y
-            x2_expanded = x2_px + margin_x
-            y2_expanded = y2_px + margin_y
-            
-            # Asegúrate de que las coordenadas no se salgan de los límites de la imagen
-            x1_crop = max(0, x1_expanded)
-            y1_crop = max(0, y1_expanded)
-            x2_crop = min(page_image.width, x2_expanded)
-            y2_crop = min(page_image.height, y2_expanded)
-            # --- FIN DE LA NUEVA LÓGICA ---
+            # 2a. OCR - Extrae el texto de cada región
+            for region_idx, (rect, _) in enumerate(text_layout_regions):
+                x1_px, y1_px, x2_px, y2_px = rect
+                box_width, box_height = x2_px - x1_px, y2_px - y1_px
+                margin_x, margin_y = box_width * OCR_MARGIN_PERCENT, box_height * OCR_MARGIN_PERCENT
+                
+                cropped_image = page_image.crop((
+                    max(0, x1_px - margin_x), max(0, y1_px - margin_y),
+                    min(page_image.width, x2_px + margin_x), min(page_image.height, y2_px + margin_y)
+                ))
+                
+                original_text = clean_text(extract_text_from_image(cropped_image))
+                
+                # Solo añadimos la región si contiene texto
+                if original_text:
+                    frame_x_pts = x1_px * (page_width_pts / page_image.width)
+                    frame_y_pts = (page_image.height - y2_px) * (page_height_pts / page_image.height)
+                    frame_width_pts = (x2_px - x1_px) * (page_width_pts / page_image.width)
+                    frame_height_pts = (y2_px - y1_px) * (page_height_pts / page_image.height)
+                    
+                    final_text_regions.append({
+                        "id": region_idx,
+                        "original_text": original_text,
+                        # El texto traducido se añadirá en un paso posterior
+                        "translated_text": "", 
+                        "position": {"x": frame_x_pts, "y": frame_y_pts, "width": frame_width_pts, "height": frame_height_pts},
+                        "coordinates": {"x1": x1_px, "y1": y1_px, "x2": x2_px, "y2": y2_px}
+                    })
 
-            frame_x_pts = x1_px * (page_width_pts / page_image.width)
-            frame_y_pts = (page_image.height - y2_px) * (page_height_pts / page_image.height)
-            frame_width_pts = (x2_px - x1_px) * (page_width_pts / page_image.width)
-            frame_height_pts = (y2_px - y1_px) * (page_height_pts / page_image.height)
-
-            # Recortar imagen para OCR usando las coordenadas expandidas
-            cropped_image = page_image.crop((x1_crop, y1_crop, x2_crop, y2_crop))
-            
-            text = extract_text_from_image(cropped_image)
-            clean_txt = clean_text(text)
-
-            if clean_txt:
-                texts_to_translate.append(clean_txt)
-                region_metadata.append({
+            # Procesa regiones de imagen
+            final_image_regions = []
+            for img_idx, (element, _) in enumerate(image_layout_regions):
+                x1_px, y1_px, x2_px, y2_px = element.box
+                final_image_regions.append({
+                    "id": img_idx,
                     "position": {
-                        "x": frame_x_pts, "y": frame_y_pts, "width": frame_width_pts, "height": frame_height_pts
+                        "x": x1_px * (page_width_pts / page_image.width),
+                        "y": (page_image.height - y2_px) * (page_height_pts / page_image.height),
+                        "width": (x2_px - x1_px) * (page_width_pts / page_image.width),
+                        "height": (y2_px - y1_px) * (page_height_pts / page_image.height)
                     },
-                    "coordinates": {
-                        "x1": x1_px, "y1": y1_px, "x2": x2_px, "y2": y2_px
-                    }
+                    "coordinates": {"x1": x1_px, "y1": y1_px, "x2": x2_px, "y2": y2_px}
                 })
-        
-        timing_data['text_extraction'] = time.time() - start_ocr
-        
-        # 4. Traducción con LLM
-        start_translation = time.time()
-        translated_texts = translate_text(texts_to_translate, target_language, language_model)
-        timing_data['llm_translation'] = time.time() - start_translation
 
-        # 5. Preparación de datos de salida
-        start_output = time.time()
-        final_text_regions = []
-        if len(translated_texts) == len(texts_to_translate):
-            for i, translated_text in enumerate(translated_texts):
-                final_text_regions.append({
-                    "id": i,
-                    "original_text": texts_to_translate[i],
-                    "translated_text": translated_text,
-                    "position": region_metadata[i]["position"],
-                    "coordinates": region_metadata[i]["coordinates"]
-                })
-        else:
-            logger.warning("La cantidad de traducciones no coincide con los textos originales. Saltando regiones de texto.")
-
-        final_image_regions = []
-        for i, (element, _) in enumerate(image_layout_regions):
-            x1_px, y1_px, x2_px, y2_px = element.box
-            
-            final_image_regions.append({
-                "id": i,
-                "position": {
-                    "x": x1_px * (page_width_pts / page_image.width),
-                    "y": (page_image.height - y2_px) * (page_height_pts / page_image.height),
-                    "width": (x2_px - x1_px) * (page_width_pts / page_image.width),
-                    "height": (y2_px - y1_px) * (page_height_pts / page_image.height)
-                },
-                "coordinates": {"x1": x1_px, "y1": y1_px, "x2": x2_px, "y2": y2_px}
+            # Añadir el resultado de la página a la lista final
+            final_results.append({
+                "text_regions": final_text_regions,
+                "image_regions": final_image_regions,
+                "page_dimensions": {"width": page_width_pts, "height": page_height_pts},
+                "error": None
             })
-        
-        timing_data['data_preparation'] = time.time() - start_output
-        timing_data['total_time'] = time.time() - start_total
-        
-        # Calcular y loguear porcentajes
-        total_time = timing_data['total_time']
-        if total_time > 0:
-            percentages = {
-                'image_load': (timing_data['image_load'] / total_time) * 100,
-                'layout_analysis': (timing_data['layout_analysis'] / total_time) * 100,
-                'text_extraction': (timing_data['text_extraction'] / total_time) * 100,
-                'llm_translation': (timing_data['llm_translation'] / total_time) * 100,
-                'data_preparation': (timing_data['data_preparation'] / total_time) * 100
-            }
-            
-            logger.info(f"=== TIMING ANALYSIS FOR PAGE {image_path} ===")
-            logger.info(f"Total time: {total_time:.3f}s")
-            logger.info(f"1. Image load: {timing_data['image_load']:.3f}s ({percentages['image_load']:.1f}%)")
-            logger.info(f"2. Layout analysis (doclayout): {timing_data['layout_analysis']:.3f}s ({percentages['layout_analysis']:.1f}%)")
-            logger.info(f"3. Text extraction (OCR): {timing_data['text_extraction']:.3f}s ({percentages['text_extraction']:.1f}%)")
-            logger.info(f"4. LLM translation: {timing_data['llm_translation']:.3f}s ({percentages['llm_translation']:.1f}%)")
-            logger.info(f"5. Data preparation: {timing_data['data_preparation']:.3f}s ({percentages['data_preparation']:.1f}%)")
-            logger.info("=" * 50)
-            
-        return {
-            "text_regions": final_text_regions,
-            "image_regions": final_image_regions,
-            "page_dimensions": {"width": page_width_pts, "height": page_height_pts},
-            "timing_data": timing_data
-        }
 
-    except Exception as e:
-        logger.error(f"Error al extraer datos de la página {image_path}: {e}", exc_info=True)
-        return {
-            "text_regions": [],
-            "image_regions": [],
-            "page_dimensions": {"width": A4[0], "height": A4[1]},
-            "error": str(e)
-        }
+        except Exception as e:
+            logger.error(f"Error procesando OCR en página {i}: {e}", exc_info=True)
+            final_results.append({
+                "text_regions": [],
+                "image_regions": [],
+                "page_dimensions": {"width": A4[0], "height": A4[1]}, # Default
+                "error": str(e)
+            })
+            
+    logger.info(f"OCR total para el lote completado en {time.time() - start_ocr_total:.2f}s")
+    logger.info(f"Extracción total de datos del lote de {len(page_images)} páginas terminada en {time.time() - start_total:.2f}s")
+    return final_results
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 def regenerate_pdf(output_pdf_path: str, translation_data: dict, position_data: dict, target_language: str) -> dict:
     """

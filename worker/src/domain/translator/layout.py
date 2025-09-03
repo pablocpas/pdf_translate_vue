@@ -98,86 +98,73 @@ class LayoutModel:
         return self.model
 
 
-def get_layout(image: Image.Image, model_type="yolov10_doc", confidence: float = 0.45) -> List[LayoutElement]:
+# --- NUEVA FUNCIÓN DE BATCHING ---
+def get_layouts_in_batch(images: List[Image.Image], model_type="yolov10_doc", confidence: float = 0.45, batch_size: int = 16) -> List[List[LayoutElement]]:
     """
-    Obtiene el layout de una imagen usando el modelo YOLOv10 especificado.
+    Obtiene el layout para una lista de imágenes usando inferencia por lotes.
     
     Args:
-        image: Imagen a procesar (en formato PIL.Image o ruta de archivo).
-        model_type: Tipo de modelo a usar (actualmente solo 'yolov10_doc').
+        images: Lista de imágenes a procesar (objetos PIL.Image).
+        model_type: Tipo de modelo a usar.
+        confidence: Umbral de confianza para las detecciones.
+        batch_size: Tamaño del lote para la inferencia del modelo.
     
     Returns:
-        Una lista de objetos LayoutElement, que es el análogo al antiguo lp.Layout.
+        Una lista de layouts. Cada layout es una lista de objetos LayoutElement.
     """
+    if not images:
+        return []
+
     try:
         model = LayoutModel(model_type).get_model()
         
-        # El modelo YOLOv10 espera una ruta de archivo o un array numpy, no un objeto PIL directamente.
-        # Si la entrada es un objeto PIL, debemos convertirla.
-        # Por simplicidad, el ejemplo de la librería usa rutas, pero se puede adaptar para numpy.
-        det_results = model.predict(
-            source=image,
+        # Realizar la predicción en lote. El modelo YOLOv10 acepta una lista de imágenes.
+        # El parámetro 'batch' se pasa directamente al predictor.
+        det_results_batch = model.predict(
+            source=images,
             conf=confidence,
-            device="cpu"
+            device="cpu",
+            batch=batch_size # Parámetro clave para la inferencia en lote
         )
 
-        layout = []
-        if not det_results or len(det_results) == 0:
-            return []
+        all_layouts = []
+        if not det_results_batch:
+            return [[] for _ in images]
 
-        # det_results[0] contiene las detecciones de la primera imagen
-        detections = det_results[0]
-        for det in detections.boxes.data:
-            x1, y1, x2, y2, score, class_id = det.tolist()
-            class_name = detections.names[int(class_id)]
-            
-            # Mapear la clase detectada a nuestro tipo estándar ("TextRegion", "ImageRegion")
-            region_type = YOLO_LABEL_MAP.get(class_name)
-            
-            if region_type:
-                layout.append(LayoutElement(
-                    box=Rectangle(x_1=x1, y_1=y1, x_2=x2, y_2=y2),
-                    type=region_type,
-                    score=score
-                ))
+        # det_results_batch es una lista, cada elemento corresponde a una imagen de entrada
+        for detections in det_results_batch:
+            layout = []
+            for det in detections.boxes.data:
+                x1, y1, x2, y2, score, class_id = det.tolist()
+                class_name = detections.names[int(class_id)]
+                
+                region_type = YOLO_LABEL_MAP.get(class_name)
+                
+                if region_type:
+                    layout.append(LayoutElement(
+                        box=Rectangle(x_1=x1, y_1=y1, x_2=x2, y_2=y2),
+                        type=region_type,
+                        score=score
+                    ))
+            all_layouts.append(layout)
         
-        return layout
+        return all_layouts
     except Exception as e:
-        logger.error(f"Error al obtener el layout de la imagen: {e}")
-        return []
+        logger.error(f"Error al obtener el layout en lote: {e}", exc_info=True)
+        # Devolver una lista de layouts vacíos con la misma longitud que la entrada
+        return [[] for _ in images]
 
 
 def merge_overlapping_text_regions(layout: List[LayoutElement]) -> Tuple[List[Tuple[Rectangle, str]], List[Tuple[LayoutElement, str]]]:
     """
-    [VERSIÓN MODIFICADA - SIN FUSIÓN]
-    Separa las regiones de texto y de imagen del layout detectado.
-    La fusión con unary_union ha sido desactivada, ya que el modelo YOLOv10
-    suele generar bloques de texto coherentes que no necesitan ser fusionados.
-
-    Args:
-        layout (List[LayoutElement]): Layout detectado por el modelo.
-
-    Returns:
-        Tuple[List[Tuple[Rectangle, str]], List[Tuple[LayoutElement, str]]]:
-            Una tupla con:
-            1. Regiones de texto originales como (Rectangle, "TextRegion").
-            2. Regiones de imagen originales como (LayoutElement, "ImageRegion").
+    (Sin cambios) Separa las regiones de texto y de imagen.
     """
-    logger.info("Separando regiones de texto e imagen sin fusionar.")
-    
-    # Simplemente extraemos las regiones de texto y las devolvemos con el formato esperado.
-    # El formato de retorno para texto es List[Tuple[Rectangle, str]]
     text_regions = [
         (element.box, "TextRegion")
-        for element in layout
-        if element.type == "TextRegion"
+        for element in layout if element.type == "TextRegion"
     ]
-
-    # El formato para imágenes es List[Tuple[LayoutElement, str]]
     image_regions = [
         (element, "ImageRegion")
-        for element in layout
-        if element.type == "ImageRegion"
+        for element in layout if element.type == "ImageRegion"
     ]
-
     return text_regions, image_regions
