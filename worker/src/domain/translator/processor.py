@@ -102,8 +102,6 @@ def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float
                     final_text_regions.append({
                         "id": region_idx,
                         "original_text": original_text,
-                        # El texto traducido se añadirá en un paso posterior
-                        "translated_text": "", 
                         "position": {"x": frame_x_pts, "y": frame_y_pts, "width": frame_width_pts, "height": frame_height_pts},
                         "coordinates": {"x1": x1_px, "y1": y1_px, "x2": x2_px, "y2": y2_px}
                     })

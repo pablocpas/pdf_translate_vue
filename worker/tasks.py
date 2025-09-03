@@ -18,7 +18,7 @@ from reportlab.platypus import Paragraph
 import asyncio
 
 
-from src.domain.translator.translator import translate_text
+from src.domain.translator.translator import translate_text_async
 from reportlab.lib.utils import ImageReader
 
 # Imports del proyecto
@@ -170,35 +170,34 @@ def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lan
         return {"status": "failed", "error": str(e)}
 
 
-
 async def async_translation_pipeline(extracted_data: List[Dict[str, Any]], tgt_lang: str, language_model: str):
     """
-    Función auxiliar asíncrona que gestiona las llamadas concurrentes a la API.
+    Gestiona las llamadas concurrentes a la API de traducción para un lote de páginas.
     """
-    translation_tasks = []
+    translation_coroutines = []
     for page_data in extracted_data:
-        # Recopila los textos originales solo de esta página
         original_texts = [region["original_text"] for region in page_data.get("text_regions", [])]
-        # Crea una tarea de corrutina para traducir los textos de esta página
-        task = translate_text(original_texts, tgt_lang, language_model)
-        translation_tasks.append(task)
+        coroutine = translate_text_async(original_texts, tgt_lang, language_model)
+        translation_coroutines.append(coroutine)
     
-    # Lanza todas las tareas de traducción en paralelo y espera a que terminen
-    logger.info(f"Lanzando {len(translation_tasks)} tareas de traducción en paralelo...")
-    all_translated_results = await asyncio.gather(*translation_tasks)
+    if not translation_coroutines:
+        logger.info("No text to translate in this batch.")
+        return extracted_data
+
+    logger.info(f"Lanzando {len(translation_coroutines)} tareas de traducción en paralelo...")
+    all_translated_results = await asyncio.gather(*translation_coroutines)
     logger.info("Todas las tareas de traducción han finalizado.")
 
-    # Ahora, actualiza la estructura de datos original con los resultados
     for i, page_data in enumerate(extracted_data):
-        translated_texts_for_page = all_translated_results[i]
+        translated_texts = all_translated_results[i]
         text_regions = page_data.get("text_regions", [])
         
-        # Asegúrate de que las longitudes coincidan
-        if len(translated_texts_for_page) == len(text_regions):
+        # Fallback en caso de que la API no devuelva el número correcto de traducciones
+        if len(translated_texts) == len(text_regions):
             for j, region in enumerate(text_regions):
-                region["translated_text"] = translated_texts_for_page[j]
+                region["translated_text"] = translated_texts[j]
         else:
-            logger.warning(f"Discrepancia de traducción en página {i}, se usará texto original.")
+            logger.warning(f"Discrepancia de traducción en página del lote {i}. Se usará texto original.")
             for region in text_regions:
                 region["translated_text"] = region["original_text"]
     
