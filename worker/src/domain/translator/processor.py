@@ -78,29 +78,32 @@ async def extract_and_translate_page_data_async(
     """
     page_width, page_height = page_image.size
     
-    # 1. Separar regiones de texto e imagen a partir del layout proporcionado
     text_boxes, image_elements = merge_overlapping_text_regions(layout)
 
-    # 2. Extraer texto con OCR de cada región de texto
     original_texts = []
     ocr_results = []
     for box, _ in text_boxes:
         # Coordenadas para recortar la imagen
         coords = (box.x_1, box.y_1, box.x_2, box.y_2)
-        text = extract_text_from_image(page_image, coords)
+        
+        # --- CORRECCIÓN AQUÍ ---
+        # 1. Recorta la imagen de la página completa para obtener solo la región de texto.
+        cropped_image = page_image.crop(coords)
+        
+        # 2. Pasa la imagen ya recortada (un solo argumento) a la función de OCR.
+        text = extract_text_from_image(cropped_image)
+        # --- FIN DE LA CORRECCIÓN ---
+        
         if text.strip():
             original_texts.append(text)
             ocr_results.append({"text": text, "box": box})
 
-    # 3. Traducir todos los textos en un solo lote de forma asíncrona
-    # MODIFICADO: Se usa 'await' para la llamada de red
+    # El resto de la función es correcto y no necesita cambios.
     translated_texts = await translate_text(original_texts, target_language, language_model)
 
-    # 4. Construir las estructuras de datos de resultado
     text_regions_data = []
     for i, ocr_res in enumerate(ocr_results):
         box = ocr_res["box"]
-        # El eje Y en reportlab empieza abajo, hay que invertirlo
         y1_pdf = page_height - box.y_2
         
         text_regions_data.append({
