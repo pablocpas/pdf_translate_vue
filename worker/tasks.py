@@ -37,7 +37,7 @@ celery_app = Celery(
 # --- CONSTANTE DE CONFIGURACIÓN ---
 # Define el número de páginas a procesar en cada tarea de Celery.
 # Ajusta este valor según la memoria de tus workers. Un valor entre 4 y 16 suele ser bueno.
-PAGE_PROCESSING_BATCH_SIZE = 8
+PAGE_PROCESSING_BATCH_SIZE = 16
 
 
 # --- LÓGICA DE CONSTRUCCIÓN DE PDF ---
