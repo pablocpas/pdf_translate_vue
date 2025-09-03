@@ -421,11 +421,12 @@ def test_async_calls():
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as response:
+                    text = await response.text()
                     return {
                         'url': url,
                         'status': response.status,
                         'headers': dict(response.headers),
-                        'text': await response.text()[:200]  # Solo primeros 200 caracteres
+                        'text': text[:200]  # Solo primeros 200 caracteres
                     }
         except Exception as e:
             return {'url': url, 'error': str(e)}
