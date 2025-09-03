@@ -20,6 +20,9 @@ from src.domain.translator.processor import extract_and_translate_page_data, get
 from src.infrastructure.config.settings import MARGIN, settings
 from src.infrastructure.storage.s3 import upload_bytes, download_bytes, presigned_get_url
 
+from src.domain.translator.layout import LayoutElement, Rectangle
+from src.domain.translator.processor import extract_and_translate_page_data_async
+from src.domain.translator.layout import get_layouts_in_batch
 
 from src.domain.translator.processor import extract_and_translate_page_data_async
 from src.domain.translator.layout import get_layouts_in_batch
@@ -238,6 +241,13 @@ def batch_layout_analysis_task(self, task_id: str, page_keys: List[str], src_lan
 def translate_page_content_task(self, task_id: str, page_number: int, image_key: str, layout_data: List[Dict], src_lang: str, tgt_lang: str, language_model: str):
     try:
         logger.info(f"Traduciendo contenido de página {page_number} para tarea {task_id}")
+
+
+        rehydrated_layout = [
+            LayoutElement(box=Rectangle(*elem[0]), type=elem[1], score=elem[2])
+            for elem in layout_data
+        ]
+        
         
         # 1. Descargar imagen desde S3
         img_bytes = download_bytes(image_key)
@@ -246,7 +256,7 @@ def translate_page_content_task(self, task_id: str, page_number: int, image_key:
         # 2. Procesar página con el pipeline asíncrono
         # Ejecutamos el código asíncrono dentro de la tarea síncrona de Celery
         result = asyncio.run(
-            process_page_with_pipeline_async(page_image, layout_data, tgt_lang, language_model)
+            process_page_with_pipeline_async(page_image, rehydrated_layout, tgt_lang, language_model)
         )
         
         # 3. Añadir metadatos
@@ -255,7 +265,11 @@ def translate_page_content_task(self, task_id: str, page_number: int, image_key:
         
         logger.info(f"Página {page_number} traducida exitosamente")
         return result
-    
+    except FlexibleChecksumError as e:
+        logger.warning(f"Checksum error en página {page_number}. Reintentando... Error: {e}")
+        raise e  # Relanzar la excepción para que Celery la capture y reintente
+
+
     except Exception as e:
         logger.error(f"Error traduciendo página {page_number}: {e}", exc_info=True)
         return {
