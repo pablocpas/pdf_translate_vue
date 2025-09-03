@@ -6,13 +6,13 @@ import { translationTaskSchema, type TranslationTask } from '@/types/schemas';
 const MAX_HISTORY_SIZE = 10;
 
 export const useTranslationStore = defineStore('translation', () => {
-  // Persistence functions
+  // Funciones de persistencia
   function loadFromStorage(key: string) {
     const stored = localStorage.getItem(`translation_${key}`);
     return stored ? JSON.parse(stored) : null;
   }
 
-  // Main state
+  // Estado principal
   const currentTask = ref<TranslationTask | null>(loadFromStorage('currentTask'));
   const taskHistory = ref<TranslationTask[]>(loadFromStorage('taskHistory') || []);
   const translationConfig = ref<TranslationConfig>(loadFromStorage('translationConfig') || {
@@ -29,7 +29,7 @@ export const useTranslationStore = defineStore('translation', () => {
     localStorage.setItem(`translation_${key}`, JSON.stringify(value));
   }
 
-  // Task management
+  // Gestión de tareas
   function setCurrentTask(task: TranslationTask): void {
     try {
       console.log('Setting current task:', task);
@@ -73,7 +73,7 @@ export const useTranslationStore = defineStore('translation', () => {
     localStorage.removeItem('translation_taskHistory');
   }
 
-  // Computed properties
+  // Propiedades computadas
   const isTaskInProgress = computed(() => 
     currentTask.value?.status === 'PENDING' || 
     currentTask.value?.status === 'PROCESSING'

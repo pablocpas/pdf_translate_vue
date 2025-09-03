@@ -7,11 +7,12 @@ from doclayout_yolo import YOLOv10
 
 logger = logging.getLogger(__name__)
 
-# --- Reemplazo de las estructuras de datos de layoutparser ---
+# Estructuras de datos para reemplazar layoutparser
 
 class Rectangle(NamedTuple):
     """
-    Un reemplazo simple para lp.Rectangle. Almacena las coordenadas de un cuadro delimitador.
+    Representa un cuadro delimitador con coordenadas.
+    Almacena las coordenadas x1, y1, x2, y2 de un rectángulo.
     """
     x_1: float
     y_1: float
@@ -20,14 +21,14 @@ class Rectangle(NamedTuple):
 
 class LayoutElement(NamedTuple):
     """
-    Un reemplazo para los elementos dentro de un lp.Layout. 
+    Elemento de layout detectado en el documento.
     Contiene el cuadro delimitador, el tipo de elemento y la puntuación de confianza.
     """
     box: Rectangle
     type: str
     score: float
 
-# --- Configuración del nuevo modelo YOLOv10 ---
+# Configuración del modelo YOLOv10
 
 # Mapeo de las clases del modelo YOLO a los tipos que usábamos ("TextRegion", "ImageRegion")
 # DocLayout-YOLO detecta más clases, las agrupamos según su naturaleza.
@@ -35,7 +36,7 @@ YOLO_LABEL_MAP = {
     'plain text': 'TextRegion',     # Párrafos de texto
     'title': 'TextRegion',          # Títulos
     'list': 'TextRegion',           # Listas
-    'table': 'ImageRegion',          # Tratamos las tablas como texto para OCR/traducción
+    'table': 'ImageRegion',  # Tablas tratadas como imagen para OCR
     'figure': 'ImageRegion',        # Figuras o imágenes
     #'header': 'TextRegion',         # Encabezados de página
     #'footer': 'TextRegion',         # Pies de página
@@ -48,7 +49,7 @@ YOLO_LABEL_MAP = {
     'abandon': 'ImageRegion',
 }
 
-# Configuración del modelo YOLOv10 local (pre-descargado en la imagen Docker)
+# Modelo YOLOv10 local incluido en la imagen Docker
 YOLO_MODEL_CONFIG = {
     "yolov10_doc": {
         "local_path": "/app/models/doclayout_yolo_docstructbench_imgsz1024.pt"
@@ -59,7 +60,7 @@ class LayoutModel:
     _instances = {}  # Diccionario para almacenar instancias por tipo de modelo
 
     def __new__(cls, model_type="yolov10_doc"):
-        """Garantiza que solo se cree una instancia por tipo de modelo."""
+        """Patrón singleton: una sola instancia por tipo de modelo"""
         if model_type not in cls._instances:
             instance = super(LayoutModel, cls).__new__(cls)
             instance._initialize_model(model_type)
@@ -67,7 +68,7 @@ class LayoutModel:
         return cls._instances[model_type]
 
     def _initialize_model(self, model_type):
-        """Inicializa el modelo YOLOv10 usando el archivo local pre-descargado."""
+        """Inicializa el modelo YOLOv10 desde archivo local"""
         try:
             if model_type not in YOLO_MODEL_CONFIG:
                 logger.warning(f"Modelo {model_type} no encontrado, usando yolov10_doc")
@@ -79,7 +80,7 @@ class LayoutModel:
             # Verificar que el archivo local existe
             if not os.path.exists(local_path):
                 raise FileNotFoundError(f"El modelo no se encuentra en {local_path}. "
-                                      "Asegúrate de que la imagen Docker se construyó correctamente.")
+                                      "Verificar la imagen Docker.")
             
             logger.info(f"Cargando modelo {model_type} desde archivo local: {local_path}")
             self.model = YOLOv10(local_path)
@@ -95,7 +96,7 @@ class LayoutModel:
         return self.model
 
 
-# --- NUEVA FUNCIÓN DE BATCHING ---
+# Procesamiento por lotes
 def get_layouts_in_batch(images: List[Image.Image], model_type="yolov10_doc", confidence: float = 0.45, batch_size: int = 16) -> List[List[LayoutElement]]:
     """
     Obtiene el layout para una lista de imágenes usando inferencia por lotes.
@@ -115,8 +116,7 @@ def get_layouts_in_batch(images: List[Image.Image], model_type="yolov10_doc", co
     try:
         model = LayoutModel(model_type).get_model()
         
-        # Realizar la predicción en lote. El modelo YOLOv10 acepta una lista de imágenes.
-        # El parámetro 'batch' se pasa directamente al predictor.
+        # Predicción por lotes con YOLOv10
         det_results_batch = model.predict(
             source=images,
             conf=confidence,
@@ -128,7 +128,7 @@ def get_layouts_in_batch(images: List[Image.Image], model_type="yolov10_doc", co
         if not det_results_batch:
             return [[] for _ in images]
 
-        # det_results_batch es una lista, cada elemento corresponde a una imagen de entrada
+        # Procesar resultados para cada imagen del lote
         for detections in det_results_batch:
             layout = []
             for det in detections.boxes.data:
@@ -148,13 +148,13 @@ def get_layouts_in_batch(images: List[Image.Image], model_type="yolov10_doc", co
         return all_layouts
     except Exception as e:
         logger.error(f"Error al obtener el layout en lote: {e}", exc_info=True)
-        # Devolver una lista de layouts vacíos con la misma longitud que la entrada
+        # Retornar layouts vacíos en caso de error
         return [[] for _ in images]
 
 
 def merge_overlapping_text_regions(layout: List[LayoutElement]) -> Tuple[List[Tuple[Rectangle, str]], List[Tuple[LayoutElement, str]]]:
     """
-    (Sin cambios) Separa las regiones de texto y de imagen.
+    Separa las regiones de texto y de imagen del layout.
     """
     text_regions = [
         (element.box, "TextRegion")

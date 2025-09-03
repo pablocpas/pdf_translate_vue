@@ -67,8 +67,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 
-// Constants
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+// Constantes
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = ['application/pdf'];
 
 const props = defineProps<{
@@ -85,7 +85,7 @@ const isDragging = ref(false);
 
 const fileSize = computed(() => {
   if (!props.modelValue) return '';
-  const size = props.modelValue.size / 1024; // KB
+  const size = props.modelValue.size / 1024;
   return size > 1024 
     ? `${(size / 1024).toFixed(2)} MB`
     : `${Math.round(size)} KB`;

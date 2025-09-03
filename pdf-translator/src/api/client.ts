@@ -34,12 +34,12 @@ const apiClient = axios.create({
   ],
 });
 
-// Request interceptor for common configuration
+// Interceptor de requests
 apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Interceptor para manejar errores y validar respuestas
+// Interceptor de respuestas
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
     return response;
@@ -56,7 +56,7 @@ apiClient.interceptors.response.use(
 
     const config = error.config as CustomAxiosRequestConfig | undefined;
     
-    // Reintentar en caso de errores de red o 5xx
+    // Reintentos para errores de red o servidor
     if (
       config &&
       (error.code === 'ECONNABORTED' || 
@@ -101,7 +101,7 @@ apiClient.interceptors.response.use(
       if (e instanceof AuthenticationError || e instanceof ApiRequestError) {
         throw e;
       }
-      // Si el error no tiene el formato esperado
+      // Fallback para errores no parseables
       throw new ApiRequestError(
         'Error inesperado del servidor',
         status

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-// 1. Enum para los pasos de procesamiento que envía el backend.
+// Pasos de procesamiento del backend
 export const processingStepSchema = z.enum([
   'Iniciando traducción',
   'Preparando documento',
@@ -10,31 +10,28 @@ export const processingStepSchema = z.enum([
   'Procesando',
 ]);
 
-// 2. MODIFICADO: El esquema de progreso ahora refleja la nueva estructura.
+// Esquema de progreso
 export const translationProgressSchema = z.object({
   step: processingStepSchema, 
   details: z.any().optional().nullable(),
 });
 
-// 3. MODIFICADO: El esquema de la tarea ahora usa el nuevo esquema de progreso.
-// También ajusto el enum de 'status' para que use mayúsculas, como lo envía el backend.
+// Esquema de tarea de traducción
 export const translationTaskSchema = z.object({
   id: z.string().min(1, 'ID is required'),
-  status: z.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']), // MAYÚSCULAS
+  status: z.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']),
   originalFile: z.string(),
   translatedFile: z.string().optional().nullable(),
   error: z.string().optional().nullable(),
-  progress: translationProgressSchema.optional().nullable(), // Usa el nuevo esquema de progreso
+  progress: translationProgressSchema.optional().nullable(),
 });
 
-// 4. NUEVO: Esquema para la respuesta completa de /translation-data/{id}
-// Esto te permite validar toda la respuesta de una vez y obtener los datos de posición.
+// Esquema para datos de posición
 const positionSchema = z.object({
   x: z.number(),
   y: z.number(),
   width: z.number(),
   height: z.number(),
-  // coordinates: z.object({ x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number() }) // Descomenta si necesitas las coordenadas en píxeles
 });
 
 const regionSchema = z.object({
@@ -50,7 +47,6 @@ const pagePositionSchema = z.object({
 
 const positionsDataSchema = z.object({
   pages: z.array(pagePositionSchema),
-  // images: z.any().optional() // Descomenta si vas a usar los datos de las imágenes
 });
 
 export const translationAndPositionDataSchema = z.object({
@@ -66,33 +62,33 @@ export const translationAndPositionDataSchema = z.object({
 });
 
 
-// --- Esquemas sin cambios ---
+// Esquemas para editor
 
-// Upload response schema
+// Respuesta de subida
 export const uploadResponseSchema = z.object({
   taskId: z.string().min(1),
 });
 
-// Translation text schema (usado para el editor)
+// Texto de traducción
 export const translationTextSchema = z.object({
   id: z.number(),
   original_text: z.string(),
   translated_text: z.string(),
 });
 
-// Page translation schema (usado para el editor)
+// Traducción de página
 export const pageTranslationSchema = z.object({
   page_number: z.number(),
   translations: z.array(translationTextSchema),
 });
 
-// Translation data schema (usado para el editor, para enviar en el PUT)
+// Datos de traducción completos
 export const translationDataSchema = z.object({
   pages: z.array(pageTranslationSchema),
 });
 
 
-// --- Exportación de Tipos para TypeScript ---
+// Tipos TypeScript
 
 export type TranslationProgress = z.infer<typeof translationProgressSchema>;
 export type TranslationTask = z.infer<typeof translationTaskSchema>;

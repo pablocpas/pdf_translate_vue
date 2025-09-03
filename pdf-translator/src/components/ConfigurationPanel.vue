@@ -10,7 +10,7 @@
       </button>
     </div>
 
-    <!-- Language Model Selection -->
+    <!-- Selección de modelo -->
     <div class="config-section">
       <label class="section-label">Modelo de Lenguaje</label>
       <div class="model-grid">
@@ -43,9 +43,9 @@
       </div>
     </div>
 
-    <!-- Advanced Options -->
+    <!-- Opciones avanzadas -->
     <div v-if="showAdvanced" class="advanced-options">
-      <!-- Confidence Slider -->
+      <!-- Control de confianza -->
       <div class="config-section">
         <label class="section-label">
           Confianza de Segmentación 

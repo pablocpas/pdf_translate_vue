@@ -4,7 +4,7 @@ export interface Language {
   nativeName: string;
 }
 
-// Re-export types from schemas to maintain backward compatibility
+// Re-exportar tipos de esquemas
 export type { 
   UploadResponse, 
   TranslationTask, 
@@ -14,7 +14,7 @@ export type {
   TranslationData 
 } from './schemas';
 
-// Translation models and configuration types
+// Modelos de traducción y configuración
 export type LanguageModelType = 
   | 'openai/gpt-4o-mini' 
   | 'openai/gpt-5-mini' 
@@ -23,5 +23,5 @@ export type LanguageModelType =
 
 export interface TranslationConfig {
   languageModel: LanguageModelType;
-  confidence: number; // 0.1 to 0.9 for DocLayout-YOLO confidence threshold
+  confidence: number;  // Umbral de confianza 0.1-0.9
 }

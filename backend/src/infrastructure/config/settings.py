@@ -7,21 +7,21 @@ class Settings(BaseSettings):
     AWS_S3_BUCKET: str
     AWS_S3_ENDPOINT_URL: str
     
-    # Estas pueden tener valores por defecto razonables.
+    # Valores por defecto
     AWS_REGION: str = 'us-east-1'
     AWS_S3_USE_SSL: bool = False
     TRANSLATED_TTL_DAYS: int = 7
     
-    # OpenAI Configuration
+    # Configuración OpenAI
     OPENAI_API_KEY: Optional[str] = None
 
     AWS_S3_PUBLIC_ENDPOINT_URL: Optional[str] = None
 
 settings = Settings()
 
-# Supported languages
+# Idiomas soportados
 SUPPORTED_LANGUAGES = {
-    # European Languages
+    # Idiomas europeos
     'de': 'German',
     'ca': 'Catalan',
     'hr': 'Croatian',
@@ -44,17 +44,17 @@ SUPPORTED_LANGUAGES = {
     'gl': 'Galician',
     'eu': 'Basque',
     
-    # Cyrillic Languages
+    # Idiomas cirílicos
     'ru': 'Russian',
     'uk': 'Ukrainian',
     'bg': 'Bulgarian',
     
-    # East Asian Languages
+    # Idiomas asiáticos
     'zh': 'Chinese (Mandarin)',
     'ja': 'Japanese',
     'ko': 'Korean',
     
-    # Other Scripts
+    # Otros idiomas
     'ar': 'Arabic',
     'he': 'Hebrew',
     'el': 'Greek',
@@ -65,5 +65,5 @@ SUPPORTED_LANGUAGES = {
     'vi': 'Vietnamese'
 }
 
-# Default language (can be used as a fallback if needed)
+# Idioma por defecto
 DEFAULT_LANGUAGE = 'es'

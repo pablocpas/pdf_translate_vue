@@ -19,33 +19,33 @@ from .layout import get_layouts_in_batch, LayoutElement, Rectangle
 
 logger = logging.getLogger(__name__)
 
-# --- NOTA DE ARQUITECTURA ---
-# Las funciones `process_pdf`, `process_page`, `process_text_regions` y `process_image_regions`
-# han sido eliminadas. Su lógica ha sido refactorizada y distribuida en:
-# 1. `tasks.py`: Para la orquestación del flujo de trabajo paralelo con Celery.
-# 2. `extract_and_translate_page_data` (abajo): Para el procesamiento de una única página
-#    que devuelve datos estructurados en lugar de dibujar en un lienzo.
-# 3. La tarea `combine_pages_task` en `tasks.py`: Que se encarga de ensamblar el PDF
-#    final a partir de los datos estructurados.
+# REFACTORIZACIÓN DE ARQUITECTURA:
+# Las funciones process_pdf, process_page, process_text_regions y process_image_regions
+# han sido eliminadas y su lógica redistribuida en:
+# 1. tasks.py: Orquestación del flujo paralelo con Celery
+# 2. extract_and_translate_page_data: Procesamiento de página individual
+# 3. combine_pages_task: Ensamblado del PDF final
 
-# Añade esta constante al principio del archivo processor.py o dentro de la función
+# Margen para el recorte de OCR
 OCR_MARGIN_PERCENT = 0.015  # 2% de margen
 
 def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float) -> List[Dict[str, Any]]:
     """
-    Procesa un lote de imágenes para realizar segmentación y OCR de forma eficiente.
-    1. Realiza la segmentación de layout para TODAS las páginas en un único lote.
-    2. Itera sobre cada página para:
-       a. Extraer todo su texto (OCR) región por región.
-       b. Ensamblar una estructura de datos con la información extraída (texto original, posiciones, etc.).
-    Esta función NO realiza la traducción.
+    Procesa un lote de imágenes para segmentación y OCR eficiente.
+    
+    Proceso:
+    1. Segmentación de layout para todas las páginas en un lote
+    2. Para cada página:
+       a. Extracción de texto (OCR) por regiones
+       b. Ensamblado de estructura de datos (texto, posiciones)
+    
     """
     if not page_images:
         return []
     
     start_total = time.time()
     
-    # 1. SEGMENTACIÓN EN LOTE (LA GRAN OPTIMIZACIÓN)
+    # 1. Segmentación en lote (optimización principal)
     start_layout = time.time()
     layouts = get_layouts_in_batch(page_images, confidence=confidence, batch_size=len(page_images))
     logger.info(f"Segmentación de layout para {len(page_images)} páginas completada en {time.time() - start_layout:.2f}s")
@@ -53,7 +53,7 @@ def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float
     # Lista para almacenar los resultados finales de cada página
     final_results = []
 
-    # 2. PROCESAMIENTO PÁGINA POR PÁGINA (SOLO PARA OCR Y ENSAMBLAJE)
+    # 2. Procesamiento por páginas (OCR y ensamblaje)
     start_ocr_total = time.time()
     for i, page_image in enumerate(page_images):
         logger.info(f"Procesando OCR para página {i+1}/{len(page_images)}")
@@ -69,10 +69,10 @@ def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float
             text_layout_regions, image_layout_regions = merge_overlapping_text_regions(page_layout)
 
         
-            # Lista para las regiones de texto de ESTA página
+            # Regiones de texto para esta página
             final_text_regions = []
             
-            # 2a. OCR - Extrae el texto de cada región
+            # Extracción de texto por OCR
             for region_idx, (rect, _) in enumerate(text_layout_regions):
                 x1_px, y1_px, x2_px, y2_px = rect
                 box_width, box_height = x2_px - x1_px, y2_px - y1_px
@@ -85,7 +85,7 @@ def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float
                 
                 original_text = clean_text(extract_text_from_image(cropped_image))
                 
-                # Solo añadimos la región si contiene texto
+                # Agregar región solo si contiene texto
                 if original_text:
                     frame_x_pts = x1_px * (page_width_pts / page_image.width)
                     frame_y_pts = (page_image.height - y2_px) * (page_height_pts / page_image.height)
@@ -114,7 +114,7 @@ def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float
                     "coordinates": {"x1": x1_px, "y1": y1_px, "x2": x2_px, "y2": y2_px}
                 })
 
-            # Añadir el resultado de la página a la lista final
+            # Agregar resultado de la página
             final_results.append({
                 "text_regions": final_text_regions,
                 "image_regions": final_image_regions,
@@ -127,7 +127,7 @@ def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float
             final_results.append({
                 "text_regions": [],
                 "image_regions": [],
-                "page_dimensions": {"width": A4[0], "height": A4[1]}, # Default
+                "page_dimensions": {"width": A4[0], "height": A4[1]},  # Tamaño por defecto
                 "error": str(e)
             })
             
@@ -151,17 +151,17 @@ def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float
 
 def regenerate_pdf(output_pdf_path: str, translation_data: dict, position_data: dict, target_language: str) -> dict:
     """
-    Regenera un PDF usando datos de traducción y posición previamente guardados.
-    Ideal para editar traducciones y volver a generar el documento rápidamente.
+    Regenera un PDF usando datos de traducción y posición guardados.
+    Permite editar traducciones y regenerar el documento rápidamente.
 
     Args:
-        output_pdf_path (str): Ruta donde guardar el PDF regenerado.
-        translation_data (dict): Diccionario con las traducciones, organizado por páginas.
-        position_data (dict): Diccionario con las dimensiones de página y posiciones de regiones.
-        target_language (str): Idioma de destino para la selección de fuentes.
+        output_pdf_path: Ruta donde guardar el PDF regenerado
+        translation_data: Diccionario con las traducciones por páginas
+        position_data: Dimensiones de página y posiciones de regiones
+        target_language: Idioma de destino para selección de fuentes
 
     Returns:
-        Dict: Diccionario con el resultado de la operación.
+        Diccionario con el resultado de la operación
     """
     try:
         pdf_canvas = canvas.Canvas(output_pdf_path)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Main app component
+// Componente principal
 </script>
 
 <template>

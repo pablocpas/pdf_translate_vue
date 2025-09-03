@@ -1,10 +1,10 @@
-# tasks.py - PDF Translation Worker Tasks
+# Tareas del worker para traducción de PDFs
 # 
-# WORKFLOW:
-# 1. process_pdf_document: Orchestrates the entire translation process
-# 2. extract_and_translate_batch: Processes page batches (layout detection + OCR + translation)
-# 3. assemble_final_pdf: Combines all results into final PDF
-# 4. regenerate_pdf_from_storage: Regenerates PDF from stored translation data
+# FLUJO DE TRABAJO:
+# 1. process_pdf_document: Orquesta todo el proceso de traducción
+# 2. extract_and_translate_batch: Procesa lotes de páginas (detección + OCR + traducción)
+# 3. assemble_final_pdf: Combina resultados en el PDF final
+# 4. regenerate_pdf_from_storage: Regenera PDF desde datos de traducción guardados
 
 from celery import Celery, group, chord
 import os
@@ -28,44 +28,41 @@ from src.domain.translator.translator import translate_text_async
 from reportlab.lib.utils import ImageReader
 
 # Imports del proyecto
-# ¡IMPORTANTE! Cambiamos el import a nuestra nueva función de batching
 from src.domain.translator.processor import extract_page_data_in_batch
 from src.domain.translator.utils import get_font_for_language, adjust_paragraph_font_size
 from src.infrastructure.config.settings import MARGIN, settings
 from src.infrastructure.storage.s3 import upload_bytes, download_bytes
 
-# Configure logging
+# Configuración de logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configure Celery
+# Configuración de Celery
 celery_app = Celery(
     'pdf_translator',
     broker=os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0'),
     backend=os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
 )
 
-# =============================================================================
-# CONFIGURATION CONSTANTS
-# =============================================================================
+# CONSTANTES DE CONFIGURACIÓN
 
 PAGE_PROCESSING_BATCH_SIZE = 16
 
 
 # =============================================================================
-# PDF CONSTRUCTION UTILITIES
+# UTILIDADES PARA CONSTRUCCIÓN DE PDF
 # =============================================================================
 def build_translated_pdf(results_list: List[Dict[str, Any]], task_id: str, target_language: str) -> bytes:
     """
-    Constructs the final PDF from processed page results.
+    Construye el PDF final desde los resultados procesados de las páginas.
     
     Args:
-        results_list: List of page processing results with text/image regions
-        task_id: Unique task identifier for S3 storage keys
-        target_language: Target language code for font selection
+        results_list: Lista de resultados de procesamiento con regiones de texto/imagen
+        task_id: Identificador único de tarea para claves de almacenamiento S3
+        target_language: Código de idioma destino para selección de fuente
     
     Returns:
-        bytes: Complete PDF document as bytes
+        Documento PDF completo como bytes
     """
     buffer = BytesIO()
     pdf_canvas = canvas.Canvas(buffer)
@@ -75,11 +72,11 @@ def build_translated_pdf(results_list: List[Dict[str, Any]], task_id: str, targe
     
     for i, page_data in enumerate(results_list):
         if page_data.get("error"):
-            logger.warning(f"Saltando página {i+1} debido a error: {page_data['error']}")
+            logger.warning(f"Omitiendo página {i+1} por error: {page_data['error']}")
             continue
 
         if not page_data.get("page_dimensions"):
-            logger.warning(f"Saltando página {i+1} por falta de dimensiones.")
+            logger.warning(f"Omitiendo página {i+1} por falta de dimensiones.")
             continue
             
         dims = page_data["page_dimensions"]
@@ -129,27 +126,27 @@ def build_translated_pdf(results_list: List[Dict[str, Any]], task_id: str, targe
 
 
 # =============================================================================
-# CELERY TASK DEFINITIONS
+# DEFINICIÓN DE TAREAS CELERY
 # =============================================================================
 
-# MAIN ORCHESTRATOR TASK
+# TAREA ORQUESTADORA PRINCIPAL
 
 @celery_app.task(name='process_pdf_document', bind=True)
 def process_pdf_document(self, file_content: bytes, src_lang: str, tgt_lang: str, language_model: str = "openai/gpt-4o-mini", confidence: float = 0.45):
     """
-    Main orchestrator task: Converts PDF to images, creates batches,
-    and launches parallel batch processing tasks.
+    Tarea orquestadora principal: Convierte PDF a imágenes, crea lotes,
+    y lanza tareas de procesamiento en lotes paralelas.
     
-    WORKFLOW:
-    1. Upload original PDF to storage
-    2. Convert PDF pages to images
-    3. Create processing batches
-    4. Launch parallel batch processing via Celery chord
+    FLUJO:
+    1. Subir PDF original a almacenamiento
+    2. Convertir páginas PDF a imágenes
+    3. Crear lotes de procesamiento
+    4. Lanzar procesamiento paralelo de lotes vía Celery chord
     
     Args:
-        file_content: PDF file as bytes
-        src_lang: Source language code
-        tgt_lang: Target language code
+        file_content: Archivo PDF como bytes
+        src_lang: Código de idioma fuente
+        tgt_lang: Código de idioma destino
         language_model: AI model for translation
         confidence: Layout detection confidence threshold
     

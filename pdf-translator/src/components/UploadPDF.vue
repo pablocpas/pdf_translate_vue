@@ -1,6 +1,6 @@
 <template>
   <div class="upload-container">
-    <!-- El :class ahora es más simple -->
+    <!-- Card principal -->
     <div class="upload-card" :class="{ 'is-processing': isProcessing }">
       <div class="card-header">
         <h2 class="title">Traductor de PDF</h2>
@@ -31,7 +31,7 @@
           :disabled="isSubmitting || (isProcessing && pollingInterval !== null)"
         >
           <div class="button-content">
-            <!-- Icono de spinner/subida -->
+            <!-- Icono del botón -->
             <svg v-if="!isProcessing" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="17 8 12 3 7 8"></polyline>
@@ -41,7 +41,7 @@
               <line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
             </svg>
             
-            <!-- Texto dinámico del botón -->
+            <!-- Texto del botón -->
             <span v-if="isSubmitting">Subiendo archivo...</span>
             <span v-else-if="isProcessing">{{ currentStepText }}...</span>
             <span v-else>Traducir PDF</span>
@@ -60,7 +60,7 @@
             @retry="handleRetry"
           />
           <template v-else>
-            <!-- El círculo de progreso ahora usa 'numericProgress' -->
+            <!-- Círculo de progreso -->
             <ProgressCircle :progress="numericProgress" />
             <h3 class="processing-title">{{ currentStepText }}</h3>
             <p class="processing-description">Por favor, espera mientras procesamos tu archivo</p>
@@ -89,7 +89,7 @@ import ProgressCircle from './ProgressCircle.vue';
 const router = useRouter();
 const translationStore = useTranslationStore();
 
-// --- Constantes y Esquemas (sin cambios) ---
+// Constantes y validación
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = ['application/pdf'];
 const schema = z.object({
@@ -103,7 +103,7 @@ const schema = z.object({
   targetLanguage: z.string().min(1, 'Por favor selecciona un idioma'),
 });
 
-// --- Estado del Componente ---
+// Estado del componente
 const form = reactive({
   config: {
     languageModel: 'openai/gpt-4o-mini' as LanguageModelType,
@@ -130,9 +130,9 @@ const simulatedProgress = ref<number>(0);
 const progressInterval = ref<number | null>(null);
 const isNavigatingToResult = ref<boolean>(false);
 
-// --- Computed Properties ---
+// Propiedades computadas
 
-// `isProcessing` ahora se basa en el estado de la tarea actual
+// Determinar si está procesando
 const isProcessing = computed(() => {
   if (!currentTask.value) return false;
   return currentTask.value.status === 'PENDING' || 
@@ -140,7 +140,7 @@ const isProcessing = computed(() => {
          isNavigatingToResult.value;
 });
 
-// Convierte el `step` de texto en un valor numérico para la UI
+// Convertir paso a progreso numérico
 const getStepProgress = (step: string | undefined): number => {
   const stepProgressMap: Record<string, number> = {
     'Iniciando traducción': 5,
@@ -176,12 +176,12 @@ const numericProgress = computed(() => {
       baseProgress = 0;
   }
   
-  // Durante la traducción, usar progreso simulado para suavidad
+  // Usar progreso simulado durante traducción
   if (currentTask.value.progress?.step === 'Traduciendo contenido' && simulatedProgress.value > baseProgress) {
     baseProgress = Math.min(simulatedProgress.value, 75); // Máximo 75% en simulación
   }
   
-  // Prevenir regresiones excepto para casos específicos
+  // Prevenir retroceso del progreso
   if (baseProgress < lastProgress.value && baseProgress !== 0 && baseProgress !== 100) {
     baseProgress = Math.max(baseProgress, lastProgress.value);
   }
@@ -213,7 +213,7 @@ const showRetryButton = computed(() => {
          errors.code === ErrorCode.OCR_FAILED;
 });
 
-// --- Limpieza ---
+// Limpieza al desmontar
 onUnmounted(() => {
   if (pollingInterval.value) {
     clearInterval(pollingInterval.value);
@@ -221,7 +221,7 @@ onUnmounted(() => {
   stopProgressSimulation();
 });
 
-// --- Funciones y Lógica ---
+// Funciones principales
 
 const validate = (): boolean => {
   errors.config = ''; errors.file = ''; errors.targetLanguage = ''; errors.general = ''; errors.code = undefined;
@@ -238,7 +238,7 @@ const validate = (): boolean => {
   return true;
 };
 
-// Mutación para subir el archivo
+// Mutación de subida
 const mutation = useMutation({
   mutationFn: (formData: FormData) => uploadPdf(formData),
   onSuccess: (data) => {
@@ -254,10 +254,10 @@ const startProgressSimulation = (step: string) => {
   
   if (progressInterval.value) clearInterval(progressInterval.value);
   
-  simulatedProgress.value = 45; // Comenzar desde el valor base
+  simulatedProgress.value = 45;  // Valor inicial
   progressInterval.value = window.setInterval(() => {
     if (simulatedProgress.value < 75) {
-      simulatedProgress.value += Math.random() * 2; // Incremento aleatorio lento
+      simulatedProgress.value += Math.random() * 2;
     }
   }, 1500);
 };
@@ -279,7 +279,7 @@ const startPolling = (taskId: string) => {
       currentTask.value = taskStatus;
       translationStore.setCurrentTask(taskStatus);
 
-      // Manejar progreso simulado
+      // Controlar progreso simulado
       if (taskStatus.progress?.step === 'Traduciendo contenido' && previousStep !== 'Traduciendo contenido') {
         startProgressSimulation('Traduciendo contenido');
       } else if (taskStatus.progress?.step !== 'Traduciendo contenido') {
@@ -291,7 +291,7 @@ const startPolling = (taskId: string) => {
         clearInterval(pollingInterval.value!);
         isNavigatingToResult.value = true;
         
-        // Mostrar 100% y esperar un momento antes de navegar
+        // Esperar antes de navegar
         setTimeout(() => {
           router.push('/result');
         }, 1500);
@@ -332,7 +332,7 @@ const handleRetry = () => {
 const handleSubmit = async () => {
   if (!validate()) return;
   
-  // Reset state
+  // Reiniciar estado
   currentTask.value = null;
   translationStore.clearCurrentTask();
   lastProgress.value = 0;
@@ -341,7 +341,7 @@ const handleSubmit = async () => {
   errors.code = undefined;
   isNavigatingToResult.value = false;
   
-  // Clear previous intervals
+  // Limpiar intervalos previos
   if (pollingInterval.value) {
     clearInterval(pollingInterval.value);
     pollingInterval.value = null;
@@ -362,7 +362,7 @@ const handleSubmit = async () => {
 </script>
 
 <style scoped>
-/* Tu CSS existente aquí (sin cambios) */
+/* Estilos del componente */
 .upload-container { max-width: 1000px; margin: 1rem auto; padding: 0 1rem; animation: slideUp 0.5s ease-out; }
 .upload-card { background: white; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05), 0 10px 15px rgba(0, 0, 0, 0.1); border: 1px solid rgba(0, 0, 0, 0.1); padding: 1.5rem; transition: all 0.3s ease; position: relative; overflow: hidden; }
 .is-processing { /* Puedes usar esta clase si quieres cambiar el estilo del card durante el proceso */ }

@@ -1,7 +1,7 @@
 <template>
   <div class="editor-container">
     <div class="editor-grid">
-      <!-- Panel Izquierdo: Editor de Textos -->
+      <!-- Editor de traducciones -->
       <div class="editor-section">
         <h3 class="subtitle">Editor de traducciones</h3>
         
@@ -15,7 +15,7 @@
         </div>
         
         <div v-else class="editor-content">
-          <!-- 1. NAVEGADOR DE PÁGINAS -->
+          <!-- Navegador de páginas -->
           <div class="page-navigator">
             <button
               v-for="page in translationPages"
@@ -27,7 +27,7 @@
             </button>
           </div>
 
-          <!-- 2. CONTENEDOR DE TRADUCCIONES CON SCROLL -->
+          <!-- Lista de traducciones -->
           <div class="translations-container">
             <div 
               v-for="page in translationPages" 
@@ -35,7 +35,6 @@
               v-show="currentPage === page.page_number + 1"
               class="page-group"
             >
-              <!-- El título de la página ahora es estático arriba, se puede quitar si se prefiere -->
               <div 
                 v-for="translation in page.translations"
                 :key="translation.id"
@@ -66,7 +65,7 @@
             </div>
           </div>
           
-          <!-- 3. ACCIONES FLOTANTES (STICKY) -->
+          <!-- Acciones del editor -->
           <div class="editor-actions">
             <button 
               class="save-button"
@@ -81,7 +80,7 @@
         </div>
       </div>
 
-      <!-- Panel Derecho: Visor PDF -->
+      <!-- Visor de PDF -->
       <div class="preview-section">
         <h3 class="subtitle">Vista previa del PDF</h3>
         <div class="pdf-viewer">
@@ -96,7 +95,7 @@
       </div>
     </div>
 
-    <!-- 4. Notificaciones (Toast) -->
+    <!-- Notificaciones -->
     <div v-if="notification.message" :class="['notification', notification.type]">
       {{ notification.message }}
     </div>
@@ -123,7 +122,7 @@ const saving = ref(false);
 const translationPages = ref<PageTranslation[]>([]);
 const pdfTimestamp = ref(Date.now());
 
-// --- NUEVOS ESTADOS PARA MEJORAR UX ---
+// Estados para la interfaz
 const currentPage = ref(1);
 const hasChanges = ref(false);
 const focusedTranslationId = ref<string | number | null>(null);
@@ -132,12 +131,12 @@ const notification = reactive({ message: '', type: 'success' as 'success' | 'err
 // Computed
 const pdfPreviewUrl = computed(() => {
   if (!props.taskId) return '';
-  // 5. NAVEGACIÓN EN EL PDF
+  // URL con navegación por páginas
   const baseUrl = `${import.meta.env.VITE_API_URL}/pdfs/download/translated/${props.taskId}?t=${pdfTimestamp.value}`;
   return `${baseUrl}#page=${currentPage.value}`;
 });
 
-// --- MÉTODOS MEJORADOS ---
+// Métodos del editor
 function setCurrentPage(pageNumber: number) {
   currentPage.value = pageNumber;
 }
@@ -161,12 +160,12 @@ async function loadTranslationData() {
   }
   
   loading.value = true;
-  hasChanges.value = false; // Resetear al cargar
+  hasChanges.value = false;
   try {
     const data = await getTranslationData(props.taskId);
     translationPages.value = data.pages;
     if (data.pages.length > 0) {
-      currentPage.value = data.pages[0].page_number + 1; // Empezar en la primera página
+      currentPage.value = data.pages[0].page_number + 1;
     }
   } catch (error) {
     console.error('Error loading translation data:', error);
@@ -188,7 +187,7 @@ async function saveChanges() {
     await updateTranslationData(props.taskId, translationData);
     
     pdfTimestamp.value = Date.now();
-    hasChanges.value = false; // Resetear estado de cambios
+    hasChanges.value = false;
     
     showNotification('Cambios guardados con éxito', 'success');
   } catch (error) {

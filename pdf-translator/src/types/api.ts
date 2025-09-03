@@ -1,32 +1,32 @@
 import { z } from 'zod';
 
-// Error codes enum for better type safety
+// Códigos de error
 export enum ErrorCode {
-  // Authentication errors
+  // Errores de autenticación
   UNAUTHORIZED = 'UNAUTHORIZED',
   TOKEN_EXPIRED = 'TOKEN_EXPIRED',
   
-  // File errors
+  // Errores de archivo
   FILE_TOO_LARGE = 'FILE_TOO_LARGE',
   INVALID_FILE_TYPE = 'INVALID_FILE_TYPE',
   FILE_CORRUPTED = 'FILE_CORRUPTED',
   
-  // Translation errors
+  // Errores de traducción
   TRANSLATION_FAILED = 'TRANSLATION_FAILED',
   LANGUAGE_NOT_SUPPORTED = 'LANGUAGE_NOT_SUPPORTED',
   OCR_FAILED = 'OCR_FAILED',
   
-  // Network errors
+  // Errores de red
   NETWORK_ERROR = 'NETWORK_ERROR',
   TIMEOUT = 'TIMEOUT',
   SERVER_ERROR = 'SERVER_ERROR',
   
-  // General errors
+  // Errores generales
   VALIDATION_ERROR = 'VALIDATION_ERROR',
   UNKNOWN_ERROR = 'UNKNOWN_ERROR'
 }
 
-// User-friendly error messages
+// Mensajes de error amigables
 export const ErrorMessages: Record<ErrorCode, string> = {
   UNAUTHORIZED: 'Tu sesión ha expirado. Por favor, inicia sesión de nuevo.',
   TOKEN_EXPIRED: 'Tu sesión ha caducado. Por favor, inicia sesión de nuevo.',
@@ -62,7 +62,7 @@ export class ApiRequestError extends Error {
     this.name = 'ApiRequestError';
   }
 
-  // Helper method to get user-friendly message
+  // Método para obtener mensaje amigable
   getUserMessage(): string {
     if (this.error?.code) {
       return ErrorMessages[this.error.code];

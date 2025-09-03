@@ -86,7 +86,7 @@ export async function downloadTranslatedPdf(taskId: string): Promise<Blob> {
 export async function getTranslationData(taskId: string): Promise<TranslationData> {
   try {
     const response = await apiClient.get(`/pdfs/translation-data/${taskId}`);
-    // Extract pages data from the response
+    // Extraer datos de páginas
     const translationData = {
       pages: response.data.pages
     };
@@ -109,7 +109,7 @@ export async function getTranslationData(taskId: string): Promise<TranslationDat
 
 export async function updateTranslationData(taskId: string, data: TranslationData): Promise<void> {
   try {
-    // Validate data before sending
+    // Validar datos antes de enviar
     translationDataSchema.parse(data);
     
     const response = await apiClient.put(`/pdfs/translation-data/${taskId}`, data, {

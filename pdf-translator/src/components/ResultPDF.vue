@@ -10,7 +10,7 @@
     <div class="result-card">
       <h2 class="title">Resultado de la traducción</h2>
 
-      <!-- Resultado -->
+      <!-- PDFs -->
       <div class="result-grid">
         <div class="pdf-section">
           <h3 class="subtitle">PDF Original</h3>
@@ -97,7 +97,7 @@ const translatedPdfUrl = computed(() =>
 
 
 onMounted(() => {
-  // Pequeño delay para asegurar que el store esté sincronizado
+  // Delay para sincronización del store
   setTimeout(() => {
     if (!currentTask.value) {
       router.push('/');

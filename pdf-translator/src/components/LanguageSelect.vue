@@ -33,48 +33,48 @@
 import type { Language } from '@/types';
 
 const languages: Language[] = [
-  // European Languages
-  { code: 'de', name: 'German', nativeName: 'Deutsch' },                   // Alemania
-  { code: 'es-ct', name: 'Catalan', nativeName: 'Català' },                // Cataluña
-  { code: 'hr', name: 'Croatian', nativeName: 'Hrvatski' },                // Croacia
-  { code: 'dk', name: 'Danish', nativeName: 'Dansk' },                     // Dinamarca
-  { code: 'sk', name: 'Slovak', nativeName: 'Slovenčina' },                // Eslovaquia
-  { code: 'si', name: 'Slovenian', nativeName: 'Slovenščina' },            // Eslovenia
-  { code: 'es', name: 'Spanish', nativeName: 'Español' },                  // España
-  { code: 'fi', name: 'Finnish', nativeName: 'Suomi' },                    // Finlandia
-  { code: 'fr', name: 'French', nativeName: 'Français' },                  // Francia
-  { code: 'nl', name: 'Dutch', nativeName: 'Nederlands' },                 // Países Bajos
-  { code: 'hu', name: 'Hungarian', nativeName: 'Magyar' },                 // Hungría
-  { code: 'gb', name: 'English', nativeName: 'English' },                  // Reino Unido
-  { code: 'it', name: 'Italian', nativeName: 'Italiano' },                 // Italia
-  { code: 'no', name: 'Norwegian', nativeName: 'Norsk' },                  // Noruega
-  { code: 'pl', name: 'Polish', nativeName: 'Polski' },                    // Polonia
-  { code: 'pt', name: 'Portuguese', nativeName: 'Português' },             // Portugal
-  { code: 'ro', name: 'Romanian', nativeName: 'Română' },                  // Rumania
-  { code: 'se', name: 'Swedish', nativeName: 'Svenska' },                  // Suecia
-  { code: 'tr', name: 'Turkish', nativeName: 'Türkçe' },                   // Turquía
-  { code: 'es-ga', name: 'Galician', nativeName: 'Galego' },               // Galicia
-  { code: 'es-pv', name: 'Basque', nativeName: 'Euskara' },                // País Vasco
+  // Idiomas europeos
+  { code: 'de', name: 'German', nativeName: 'Deutsch' },
+  { code: 'es-ct', name: 'Catalan', nativeName: 'Català' },
+  { code: 'hr', name: 'Croatian', nativeName: 'Hrvatski' },
+  { code: 'dk', name: 'Danish', nativeName: 'Dansk' },
+  { code: 'sk', name: 'Slovak', nativeName: 'Slovenčina' },
+  { code: 'si', name: 'Slovenian', nativeName: 'Slovenščina' },
+  { code: 'es', name: 'Spanish', nativeName: 'Español' },
+  { code: 'fi', name: 'Finnish', nativeName: 'Suomi' },
+  { code: 'fr', name: 'French', nativeName: 'Français' },
+  { code: 'nl', name: 'Dutch', nativeName: 'Nederlands' },
+  { code: 'hu', name: 'Hungarian', nativeName: 'Magyar' },
+  { code: 'gb', name: 'English', nativeName: 'English' },
+  { code: 'it', name: 'Italian', nativeName: 'Italiano' },
+  { code: 'no', name: 'Norwegian', nativeName: 'Norsk' },
+  { code: 'pl', name: 'Polish', nativeName: 'Polski' },
+  { code: 'pt', name: 'Portuguese', nativeName: 'Português' },
+  { code: 'ro', name: 'Romanian', nativeName: 'Română' },
+  { code: 'se', name: 'Swedish', nativeName: 'Svenska' },
+  { code: 'tr', name: 'Turkish', nativeName: 'Türkçe' },
+  { code: 'es-ga', name: 'Galician', nativeName: 'Galego' },
+  { code: 'es-pv', name: 'Basque', nativeName: 'Euskara' },
 
-  // Cyrillic Languages
-  { code: 'ru', name: 'Russian', nativeName: 'Русский' },                  // Rusia
-  { code: 'ua', name: 'Ukrainian', nativeName: 'Українська' },             // Ucrania
-  { code: 'bg', name: 'Bulgarian', nativeName: 'Български' },              // Bulgaria
+  // Idiomas cirílicos
+  { code: 'ru', name: 'Russian', nativeName: 'Русский' },
+  { code: 'ua', name: 'Ukrainian', nativeName: 'Українська' },
+  { code: 'bg', name: 'Bulgarian', nativeName: 'Български' },
 
-  // East Asian Languages
-  { code: 'cn', name: 'Chinese (Mandarin)', nativeName: '中文' },          // China
-  { code: 'jp', name: 'Japanese', nativeName: '日本語' },                  // Japón
-  { code: 'kr', name: 'Korean', nativeName: '한국어' },                    // Corea del Sur
+  // Idiomas asiáticos
+  { code: 'cn', name: 'Chinese (Mandarin)', nativeName: '中文' },
+  { code: 'jp', name: 'Japanese', nativeName: '日本語' },
+  { code: 'kr', name: 'Korean', nativeName: '한국어' },
 
-  // Other Scripts
-  { code: 'arab', name: 'Arabic', nativeName: 'العربية' },                 // Liga Árabe
-  { code: 'il', name: 'Hebrew', nativeName: 'עברית' },                     // Israel
-  { code: 'gr', name: 'Greek', nativeName: 'Ελληνικά' },                   // Grecia
-  { code: 'in', name: 'Hindi', nativeName: 'हिन्दी' },                     // India
-  { code: 'bd', name: 'Bengali', nativeName: 'বাংলা' },                    // Bangladesh
-  { code: 'lk', name: 'Tamil', nativeName: 'தமிழ்' },                      // Sri Lanka
-  { code: 'th', name: 'Thai', nativeName: 'ไทย' },                         // Tailandia
-  { code: 'vn', name: 'Vietnamese', nativeName: 'Tiếng Việt' }             // Vietnam
+  // Otros idiomas
+  { code: 'arab', name: 'Arabic', nativeName: 'العربية' },
+  { code: 'il', name: 'Hebrew', nativeName: 'עברית' },
+  { code: 'gr', name: 'Greek', nativeName: 'Ελληνικά' },
+  { code: 'in', name: 'Hindi', nativeName: 'हिन्दी' },
+  { code: 'bd', name: 'Bengali', nativeName: 'বাংলা' },
+  { code: 'lk', name: 'Tamil', nativeName: 'தமிழ்' },
+  { code: 'th', name: 'Thai', nativeName: 'ไทย' },
+  { code: 'vn', name: 'Vietnamese', nativeName: 'Tiếng Việt' }
 ];
 
 defineProps<{

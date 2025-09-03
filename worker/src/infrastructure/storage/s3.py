@@ -10,7 +10,7 @@ from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Global S3 client configuration
+# Configuración global del cliente S3
 _session = boto3.session.Session()
 _client = _session.client(
     "s3",
@@ -20,7 +20,7 @@ _client = _session.client(
     config=Config(
         signature_version="s3v4",
         s3={
-            'addressing_style': 'path'  # Mejor compatibilidad con MinIO
+            'addressing_style': 'path'  # Compatibilidad con MinIO
         }
     ),
     aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
@@ -28,7 +28,7 @@ _client = _session.client(
 )
 
 def ensure_bucket_exists():
-    """Create bucket if it doesn't exist"""
+    """Crear bucket si no existe"""
     try:
         _client.head_bucket(Bucket=settings.AWS_S3_BUCKET)
         logger.info(f"Bucket {settings.AWS_S3_BUCKET} exists")
@@ -42,11 +42,11 @@ def ensure_bucket_exists():
             raise
 
 def upload_bytes(key: str, data: bytes, content_type: Optional[str] = None):
-    """Upload bytes to S3"""
+    """Subir bytes a S3"""
     try:
         extra = {"ContentType": content_type} if content_type else {}
         
-        # No usar ChecksumAlgorithm con MinIO por compatibilidad
+        # Evitar ChecksumAlgorithm con MinIO
         _client.put_object(Bucket=settings.AWS_S3_BUCKET, Key=key, Body=data, **extra)
         logger.info(f"Uploaded {len(data)} bytes to s3://{settings.AWS_S3_BUCKET}/{key}")
         
