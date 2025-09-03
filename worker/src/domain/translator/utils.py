@@ -15,6 +15,21 @@ def clean_text(text: str) -> str:
     text = text.replace("\f", "").replace("\n", " ")
     return text.strip()
 
+def get_font_for_language(target_language: str) -> str:
+    """
+    Returns the appropriate font based on the target language.
+    """
+    cjk_fonts = {
+        'jp': 'HeiseiMin-W3',  # Japanese
+        'kr': 'HYSMyeongJo-Medium',  # Korean
+        'cn': 'STSong-Light',  # Chinese
+    }
+    
+    # Return CJK font if language is CJK
+    if target_language in cjk_fonts:
+        return cjk_fonts[target_language]
+    
+
 def adjust_paragraph_font_size(paragraph: Paragraph, available_width: float, available_height: float, style: ParagraphStyle, min_font_size: int = 6, max_font_size: int = 72) -> Paragraph:
     """
     Ajusta el tamaño de fuente de un párrafo para que se ajuste al espacio disponible.
