@@ -26,11 +26,6 @@ from .layout import get_layouts_in_batch, LayoutElement, Rectangle
 
 logger = logging.getLogger(__name__)
 
-# --- CONFIGURACIÓN DE FUENTES (Sin cambios) ---
-# Register fonts for different scripts
-
-
-
 # --- NOTA DE ARQUITECTURA ---
 # Las funciones `process_pdf`, `process_page`, `process_text_regions` y `process_image_regions`
 # han sido eliminadas. Su lógica ha sido refactorizada y distribuida en:
