@@ -94,10 +94,16 @@ def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float
         logger.info(f"Procesando OCR para página {i+1}/{len(page_images)}")
         
         try:
+
             page_layout = layouts[i]
-            page_width_pts, page_height_pts = get_page_dimensions_from_image(page_image)
-            text_layout_regions, image_layout_regions = merge_overlapping_text_regions(page_layout)
+
+            dpi = 300
+            page_width_pts = (page_image.width / dpi) * 72
+            page_height_pts = (page_image.height / dpi) * 72
             
+            text_layout_regions, image_layout_regions = merge_overlapping_text_regions(page_layout)
+
+        
             # Lista para las regiones de texto de ESTA página
             final_text_regions = []
             
