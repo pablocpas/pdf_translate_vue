@@ -91,7 +91,7 @@ async def translate_text_async(texts: List[str], target_language: str, language_
 
     try:
         # Llamada con response_format para forzar la estructura devuelta.
-        response = client.beta.chat.completions.parse(
+        response = await client.beta.chat.completions.parse(
             model=language_model,
             messages=[
                 {"role": "system", "content": system_prompt},
