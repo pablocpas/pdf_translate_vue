@@ -28,46 +28,7 @@ logger = logging.getLogger(__name__)
 
 # --- CONFIGURACIÓN DE FUENTES (Sin cambios) ---
 # Register fonts for different scripts
-FONTS_DIR = os.path.join(os.path.dirname(__file__), "fonts")
-os.makedirs(FONTS_DIR, exist_ok=True)
 
-# Register Open Sans font
-pdfmetrics.registerFont(TTFont('OpenSans', os.path.join(FONTS_DIR, 'OpenSans-Regular.ttf')))
-
-# Register CID fonts for CJK languages
-pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W3'))  # Japanese
-pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJo-Medium'))  # Korean
-pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))  # Chinese
-
-def get_font_for_language(target_language: str) -> str:
-    """
-    Returns the appropriate font based on the target language.
-    """
-    cjk_fonts = {
-        'jp': 'HeiseiMin-W3',  # Japanese
-        'kr': 'HYSMyeongJo-Medium',  # Korean
-        'cn': 'STSong-Light',  # Chinese
-    }
-    
-    # Return CJK font if language is CJK
-    if target_language in cjk_fonts:
-        return cjk_fonts[target_language]
-    
-    # Use Open Sans for all other scripts (Latin, Cyrillic, Greek, etc.)
-    return 'OpenSans'
-
-def get_font_for_language(target_language: str) -> str:
-    """
-    Returns the appropriate font based on the target language.
-    """
-    cjk_fonts = {
-        'jp': 'HeiseiMin-W3',
-        'kr': 'HYSMyeongJo-Medium',
-        'cn': 'STSong-Light',
-    }
-    if target_language in cjk_fonts:
-        return cjk_fonts[target_language]
-    return 'OpenSans'
 
 
 # --- NOTA DE ARQUITECTURA ---
