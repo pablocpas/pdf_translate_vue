@@ -15,7 +15,9 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 
-from .layout import get_layout, merge_overlapping_text_regions
+
+
+from .layout import get_layout, merge_overlapping_text_regions, LayoutElement, Rectangle
 from .ocr import extract_text_from_image
 from .translator import translate_text
 from .utils import adjust_paragraph_font_size, clean_text
