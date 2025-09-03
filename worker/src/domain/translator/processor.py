@@ -39,6 +39,22 @@ pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W3'))  # Japanese
 pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJo-Medium'))  # Korean
 pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))  # Chinese
 
+def get_font_for_language(target_language: str) -> str:
+    """
+    Returns the appropriate font based on the target language.
+    """
+    cjk_fonts = {
+        'jp': 'HeiseiMin-W3',  # Japanese
+        'kr': 'HYSMyeongJo-Medium',  # Korean
+        'cn': 'STSong-Light',  # Chinese
+    }
+    
+    # Return CJK font if language is CJK
+    if target_language in cjk_fonts:
+        return cjk_fonts[target_language]
+    
+    # Use Open Sans for all other scripts (Latin, Cyrillic, Greek, etc.)
+    return 'OpenSans'
 
 def get_font_for_language(target_language: str) -> str:
     """
