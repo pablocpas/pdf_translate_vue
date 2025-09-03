@@ -17,7 +17,6 @@ from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 
 from .layout import merge_overlapping_text_regions
 from .ocr import extract_text_from_image
-from .translator import translate_text
 from .utils import adjust_paragraph_font_size, clean_text
 from .pdf_utils import get_page_dimensions_from_image
 from ...infrastructure.config.settings import MARGIN, DEBUG_MODE
