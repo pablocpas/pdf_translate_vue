@@ -14,6 +14,11 @@ from pdf2image import convert_from_bytes
 from reportlab.pdfgen import canvas
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import Paragraph
+
+import asyncio
+
+
+from src.domain.translator.translator import translate_text
 from reportlab.lib.utils import ImageReader
 
 # Imports del proyecto
@@ -165,6 +170,42 @@ def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lan
         return {"status": "failed", "error": str(e)}
 
 
+
+async def async_translation_pipeline(extracted_data: List[Dict[str, Any]], tgt_lang: str, language_model: str):
+    """
+    Función auxiliar asíncrona que gestiona las llamadas concurrentes a la API.
+    """
+    translation_tasks = []
+    for page_data in extracted_data:
+        # Recopila los textos originales solo de esta página
+        original_texts = [region["original_text"] for region in page_data.get("text_regions", [])]
+        # Crea una tarea de corrutina para traducir los textos de esta página
+        task = translate_text(original_texts, tgt_lang, language_model)
+        translation_tasks.append(task)
+    
+    # Lanza todas las tareas de traducción en paralelo y espera a que terminen
+    logger.info(f"Lanzando {len(translation_tasks)} tareas de traducción en paralelo...")
+    all_translated_results = await asyncio.gather(*translation_tasks)
+    logger.info("Todas las tareas de traducción han finalizado.")
+
+    # Ahora, actualiza la estructura de datos original con los resultados
+    for i, page_data in enumerate(extracted_data):
+        translated_texts_for_page = all_translated_results[i]
+        text_regions = page_data.get("text_regions", [])
+        
+        # Asegúrate de que las longitudes coincidan
+        if len(translated_texts_for_page) == len(text_regions):
+            for j, region in enumerate(text_regions):
+                region["translated_text"] = translated_texts_for_page[j]
+        else:
+            logger.warning(f"Discrepancia de traducción en página {i}, se usará texto original.")
+            for region in text_regions:
+                region["translated_text"] = region["original_text"]
+    
+    return extracted_data
+
+
+
 @celery_app.task(
     name='process_page_batch_task', 
     bind=True,
@@ -188,15 +229,13 @@ def process_page_batch_task(self, task_id: str, page_batch_info: List[Tuple[int,
         # 2. Extraer datos (segmentación + OCR) usando la nueva función en processor.py
         extracted_data = extract_page_data_in_batch(page_images, confidence)
         
-        # 3. *** PASO DE PRUEBA: Omitir traducción ***
-        #    Copiamos el texto original al campo de traducción para poder construir el PDF.
-        for page_result in extracted_data:
-            for text_region in page_result.get("text_regions", []):
-                text_region["translated_text"] = text_region["original_text"]
+        
+        completed_data = asyncio.run(async_translation_pipeline(extracted_data, tgt_lang, language_model))
+
         
         # 4. Asignar números de página a los resultados
         final_batch_results = []
-        for i, result in enumerate(extracted_data):
+        for i, result in enumerate(completed_data):
             result["page_number"] = page_batch_info[i][0]
             result.setdefault("error", None)
             final_batch_results.append(result)

@@ -2,11 +2,11 @@ import json
 import logging
 from typing import List
 from pydantic import BaseModel
-from openai import OpenAI
+from openai import AsyncOpenAI
 from ...infrastructure.config.settings import settings
 
 # Configura el cliente con tu base_url y API Key de OpenRouter o OpenAI:
-client = OpenAI(
+client = AsyncOpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=settings.OPENAI_API_KEY,
 )
@@ -54,7 +54,7 @@ LANGUAGE_MAP = {
 class TranslationResponse(BaseModel):
     translations: List[str]
 
-def translate_text(texts: List[str], target_language: str, language_model: str = "openai/gpt-4o-mini") -> List[str]:
+async def translate_text(texts: List[str], target_language: str, language_model: str = "openai/gpt-4o-mini") -> List[str]:
     """
     Translates a list of texts into the specified language using
     OpenAI's Structured Outputs feature. It ensures the model
