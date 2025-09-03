@@ -1,4 +1,10 @@
-# tasks.py - Refactorizado para BATCHING y PRUEBA SIN TRADUCCIÓN
+# tasks.py - PDF Translation Worker Tasks
+# 
+# WORKFLOW:
+# 1. process_pdf_document: Orchestrates the entire translation process
+# 2. extract_and_translate_batch: Processes page batches (layout detection + OCR + translation)
+# 3. assemble_final_pdf: Combines all results into final PDF
+# 4. regenerate_pdf_from_storage: Regenerates PDF from stored translation data
 
 from celery import Celery, group, chord
 import os
@@ -39,16 +45,27 @@ celery_app = Celery(
     backend=os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
 )
 
-# --- CONSTANTE DE CONFIGURACIÓN ---
-# Define el número de páginas a procesar en cada tarea de Celery.
-# Ajusta este valor según la memoria de tus workers. Un valor entre 4 y 16 suele ser bueno.
+# =============================================================================
+# CONFIGURATION CONSTANTS
+# =============================================================================
+
 PAGE_PROCESSING_BATCH_SIZE = 16
 
 
-# --- LÓGICA DE CONSTRUCCIÓN DE PDF ---
+# =============================================================================
+# PDF CONSTRUCTION UTILITIES
+# =============================================================================
 def build_translated_pdf(results_list: List[Dict[str, Any]], task_id: str, target_language: str) -> bytes:
     """
-    Construye el PDF a partir de los resultados de las páginas.
+    Constructs the final PDF from processed page results.
+    
+    Args:
+        results_list: List of page processing results with text/image regions
+        task_id: Unique task identifier for S3 storage keys
+        target_language: Target language code for font selection
+    
+    Returns:
+        bytes: Complete PDF document as bytes
     """
     buffer = BytesIO()
     pdf_canvas = canvas.Canvas(buffer)
@@ -111,13 +128,33 @@ def build_translated_pdf(results_list: List[Dict[str, Any]], task_id: str, targe
     return buffer.getvalue()
 
 
-# --- TAREAS DE CELERY REFACTORIZADAS ---
+# =============================================================================
+# CELERY TASK DEFINITIONS
+# =============================================================================
 
-@celery_app.task(name='translate_pdf_orchestrator', bind=True)
-def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lang: str, language_model: str = "openai/gpt-4o-mini", confidence: float = 0.45):
+# MAIN ORCHESTRATOR TASK
+
+@celery_app.task(name='process_pdf_document', bind=True)
+def process_pdf_document(self, file_content: bytes, src_lang: str, tgt_lang: str, language_model: str = "openai/gpt-4o-mini", confidence: float = 0.45):
     """
-    Orquesta la extracción: convierte PDF a imágenes, las agrupa en lotes
-    y lanza tareas de procesamiento por lotes en paralelo.
+    Main orchestrator task: Converts PDF to images, creates batches,
+    and launches parallel batch processing tasks.
+    
+    WORKFLOW:
+    1. Upload original PDF to storage
+    2. Convert PDF pages to images
+    3. Create processing batches
+    4. Launch parallel batch processing via Celery chord
+    
+    Args:
+        file_content: PDF file as bytes
+        src_lang: Source language code
+        tgt_lang: Target language code
+        language_model: AI model for translation
+        confidence: Layout detection confidence threshold
+    
+    Returns:
+        dict: Task status and result task ID
     """
     try:
         task_id = self.request.id
@@ -150,11 +187,11 @@ def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lan
         self.update_state(state='PROGRESS', meta={'status': 'Extrayendo contenido (sin traducción)'})
         
         job = group(
-            process_page_batch_task.s(task_id, batch, src_lang, tgt_lang, language_model, confidence) 
+            extract_and_translate_batch.s(task_id, batch, src_lang, tgt_lang, language_model, confidence) 
             for batch in batches
         )
         
-        result = chord(job)(finalize_task.s(task_id, original_key, src_lang, tgt_lang))
+        result = chord(job)(assemble_final_pdf.s(task_id, original_key, src_lang, tgt_lang))
         
         logger.info(f"Chord iniciado para {len(batches)} lotes. Tarea finalizadora ID: {result.id}")
         
@@ -170,9 +207,19 @@ def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lan
         return {"status": "failed", "error": str(e)}
 
 
-async def async_translation_pipeline(extracted_data: List[Dict[str, Any]], tgt_lang: str, language_model: str):
+# TRANSLATION PIPELINE
+
+async def translate_extracted_text(extracted_data: List[Dict[str, Any]], tgt_lang: str, language_model: str) -> List[Dict[str, Any]]:
     """
-    Gestiona las llamadas concurrentes a la API de traducción para un lote de páginas.
+    Manages concurrent translation API calls for a batch of pages.
+    
+    Args:
+        extracted_data: List of page data with extracted text regions
+        tgt_lang: Target language code
+        language_model: AI model identifier
+    
+    Returns:
+        List[Dict]: Same data structure with translated_text added to regions
     """
     translation_coroutines = []
     for page_data in extracted_data:
@@ -205,41 +252,58 @@ async def async_translation_pipeline(extracted_data: List[Dict[str, Any]], tgt_l
 
 
 
+# BATCH PROCESSING TASK
+
 @celery_app.task(
-    name='process_page_batch_task', 
+    name='extract_and_translate_batch', 
     bind=True,
     autoretry_for=(FlexibleChecksumError,),
     retry_kwargs={'max_retries': 3},
     retry_backoff=True,
     retry_backoff_max=60
 )
-def process_page_batch_task(self, task_id: str, page_batch_info: List[Tuple[int, str]], src_lang: str, tgt_lang: str, language_model: str, confidence: float):
+def extract_and_translate_batch(self, task_id: str, page_batch_info: List[Tuple[int, str]], src_lang: str, tgt_lang: str, language_model: str, confidence: float):
     """
-    Tarea worker: procesa un LOTE de páginas realizando segmentación y OCR.
-    LA TRADUCCIÓN ESTÁ DESACTIVADA PARA ESTA PRUEBA.
+    Worker task: Processes a BATCH of pages performing layout detection, OCR, and translation.
+    
+    PROCESS:
+    1. Download page images from storage
+    2. Perform layout detection and OCR (batch processing)
+    3. Translate extracted text via API
+    4. Return structured page data with translations
+    
+    Args:
+        task_id: Unique task identifier
+        page_batch_info: List of (page_number, storage_key) tuples
+        src_lang: Source language code
+        tgt_lang: Target language code  
+        language_model: AI model for translation
+        confidence: Layout detection confidence
+    
+    Returns:
+        List[Dict]: Processed page data with text/image regions
     """
     try:
         page_numbers = [info[0] for info in page_batch_info]
         logger.info(f"Procesando lote de páginas {page_numbers} para tarea {task_id}")
         
-        # 1. Descargar imágenes del lote desde S3
+        # Step 1: Download batch images from storage
         page_images = [Image.open(BytesIO(download_bytes(key))).convert("RGB") for _, key in page_batch_info]
         
-        # 2. Extraer datos (segmentación + OCR) usando la nueva función en processor.py
+        # Step 2: Extract data (layout detection + OCR) using batch processing
         extracted_data = extract_page_data_in_batch(page_images, confidence)
         
-        
-        completed_data = asyncio.run(async_translation_pipeline(extracted_data, tgt_lang, language_model))
+        # Step 3: Translate all extracted text
+        translated_data = asyncio.run(translate_extracted_text(extracted_data, tgt_lang, language_model))
 
-        
-        # 4. Asignar números de página a los resultados
+        # Step 4: Assign page numbers to results
         final_batch_results = []
-        for i, result in enumerate(completed_data):
+        for i, result in enumerate(translated_data):
             result["page_number"] = page_batch_info[i][0]
             result.setdefault("error", None)
             final_batch_results.append(result)
             
-        logger.info(f"Lote de páginas {page_numbers} procesado (extracción) exitosamente")
+        logger.info(f"Batch pages {page_numbers} processed successfully (extraction + translation)")
         return final_batch_results
     
     except FlexibleChecksumError as e:
@@ -247,35 +311,53 @@ def process_page_batch_task(self, task_id: str, page_batch_info: List[Tuple[int,
         raise
         
     except Exception as e:
-        logger.error(f"Error fatal procesando lote de páginas {page_numbers}: {e}", exc_info=True)
+        logger.error(f"Fatal error processing page batch {page_numbers}: {e}", exc_info=True)
         error_results = [{
             "page_number": page_num, "text_regions": [], "image_regions": [],
-            "page_dimensions": None, "error": f"Fallo en el lote: {str(e)}",
+            "page_dimensions": None, "error": f"Batch processing failed: {str(e)}",
         } for page_num, _ in page_batch_info]
         return error_results
 
 
-@celery_app.task(name='finalize_task', bind=True)
-def finalize_task(self, results_from_batches: List[List[Dict[str, Any]]], task_id: str, original_key: str, src_lang: str, tgt_lang: str):
+# PDF ASSEMBLY TASK
+
+@celery_app.task(name='assemble_final_pdf', bind=True)
+def assemble_final_pdf(self, results_from_batches: List[List[Dict[str, Any]]], task_id: str, original_key: str, src_lang: str, tgt_lang: str):
     """
-    Tarea finalizadora: reconstruye PDF y lo sube a S3.
+    Finalizer task: Assembles the complete PDF from batch results and uploads to storage.
+    
+    PROCESS:
+    1. Flatten and sort all batch results by page number
+    2. Build final PDF with translated text and preserved layout
+    3. Generate translation and position metadata
+    4. Upload all files to storage
+    
+    Args:
+        results_from_batches: Nested list of batch processing results
+        task_id: Unique task identifier
+        original_key: Storage key for original PDF
+        src_lang: Source language code
+        tgt_lang: Target language code
+    
+    Returns:
+        dict: Completion status and storage keys
     """
     try:
-        # Aplanar la lista de resultados de los lotes
+        # Flatten and sort batch results by page number
         results_list = [item for sublist in results_from_batches for item in sublist]
-        logger.info(f"Finalizando tarea {task_id} con {len(results_list)} páginas de {len(results_from_batches)} lotes.")
+        logger.info(f"Finalizing task {task_id} with {len(results_list)} pages from {len(results_from_batches)} batches.")
         
         results_list.sort(key=lambda r: r.get("page_number", 0))
         
         self.update_state(state='PROGRESS', meta={'status': 'Finalizando documento'})
         
-        # Construir el PDF. Para la prueba, usará el idioma de destino para la fuente.
+        # Build the final PDF with translations
         translated_pdf_bytes = build_translated_pdf(results_list, task_id, tgt_lang)
         
         translated_key = f"{task_id}/translated/translated.pdf"
         upload_bytes(translated_key, translated_pdf_bytes, content_type="application/pdf")
         
-        # Construir y subir metadatos de traducción
+        # Build and upload translation metadata
         translation_data = {
             "pages": [{
                 "page_number": page_data.get('page_number', i),
@@ -315,7 +397,7 @@ def finalize_task(self, results_from_batches: List[List[Dict[str, Any]]], task_i
         meta_key = f"{task_id}/translated/metadata.json"
         upload_bytes(meta_key, json.dumps(meta_data, ensure_ascii=False, indent=2).encode(), "application/json")
         
-        logger.info(f"Tarea {task_id} completada exitosamente (SIN TRADUCCIÓN)")
+        logger.info(f"Task {task_id} completed successfully")
         
         return {
             "status": "COMPLETED",
@@ -327,18 +409,30 @@ def finalize_task(self, results_from_batches: List[List[Dict[str, Any]]], task_i
         }
         
     except Exception as e:
-        logger.error(f"Error en finalización de tarea {task_id}: {e}", exc_info=True)
+        logger.error(f"Error finalizing task {task_id}: {e}", exc_info=True)
         self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)})
         return {"status": "failed", "error": str(e)}
 
 
-@celery_app.task(name='regenerate_pdf_s3')
-def regenerate_pdf_s3_task(task_id: str, translation_data: dict, position_data: dict):
+# PDF REGENERATION TASK
+
+@celery_app.task(name='regenerate_pdf_from_storage')
+def regenerate_pdf_from_storage(task_id: str, translation_data: dict, position_data: dict):
     """
-    Regenera PDF desde S3 con nuevos datos de traducción.
+    Regenerates PDF from stored translation data with updated translations.
+    
+    Used for editing translations without re-processing the entire document.
+    
+    Args:
+        task_id: Unique task identifier
+        translation_data: Dictionary with translation text data
+        position_data: Dictionary with layout positions and dimensions
+    
+    Returns:
+        dict: Success status and storage key
     """
     try:
-        logger.info(f"Regenerando PDF desde S3 para tarea {task_id}")
+        logger.info(f"Regenerating PDF from storage for task {task_id}")
         
         # Determinar idioma de destino
         tgt_lang = "es" # Default
@@ -377,9 +471,9 @@ def regenerate_pdf_s3_task(task_id: str, translation_data: dict, position_data: 
         translated_key = f"{task_id}/translated/translated.pdf"
         upload_bytes(translated_key, translated_pdf_bytes, content_type="application/pdf")
         
-        logger.info(f"PDF regenerado exitosamente para tarea {task_id}")
+        logger.info(f"PDF regenerated successfully for task {task_id}")
         return {"success": True, "translated_key": translated_key}
         
     except Exception as e:
-        logger.error(f"Error regenerando PDF S3 para tarea {task_id}: {e}", exc_info=True)
+        logger.error(f"Error regenerating PDF from storage for task {task_id}: {e}", exc_info=True)
         return {"error": str(e)}
