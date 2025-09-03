@@ -94,20 +94,21 @@ def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float
                     if (x1_r <= word_center_x <= x2_r) and (y1_r <= word_center_y <= y2_r):
                         region_words.append(word_text)
                 
-                original_text = clean_text(" ".join(region_words))
                 
                 # Solo añadimos la región si contiene texto
-                if original_text:
-                    frame_x_pts = x1_px * (page_width_pts / page_image.width)
-                    frame_y_pts = (page_image.height - y2_px) * (page_height_pts / page_image.height)
-                    frame_width_pts = (x2_px - x1_px) * (page_width_pts / page_image.width)
-                    frame_height_pts = (y2_px - y1_px) * (page_height_pts / page_image.height)
+                if region_words:
+                    original_text = clean_text(" ".join(region_words))
+
+                    frame_x_pts = x1_r * (page_width_pts / page_image.width)
+                    frame_y_pts = (page_image.height - y2_r) * (page_height_pts / page_image.height)
+                    frame_width_pts = (x2_r - x1_r) * (page_width_pts / page_image.width)
+                    frame_height_pts = (y2_r - y1_r) * (page_height_pts / page_image.height)
                     
                     final_text_regions.append({
                         "id": region_idx,
                         "original_text": original_text,
                         "position": {"x": frame_x_pts, "y": frame_y_pts, "width": frame_width_pts, "height": frame_height_pts},
-                        "coordinates": {"x1": x1_px, "y1": y1_px, "x2": x2_px, "y2": y2_px}
+                        "coordinates": {"x1": x1_r, "y1": y1_r, "x2": x2_r, "y2": y2_r}
                     })
 
             # Procesa regiones de imagen
