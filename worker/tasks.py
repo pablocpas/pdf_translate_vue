@@ -20,6 +20,10 @@ from src.domain.translator.processor import extract_and_translate_page_data, get
 from src.infrastructure.config.settings import MARGIN, settings
 from src.infrastructure.storage.s3 import upload_bytes, download_bytes, presigned_get_url
 
+
+from src.domain.translator.processor import extract_and_translate_page_data_async
+from src.domain.translator.layout import get_layouts_in_batch
+
 # Imports de terceros
 from reportlab.pdfgen import canvas
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -39,6 +43,15 @@ celery_app = Celery(
     broker=os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0'),
     backend=os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
 )
+
+
+async def process_page_with_pipeline_async(page_image: Image.Image, layout: List[Dict], tgt_lang: str, language_model: str) -> Dict[str, Any]:
+    """
+    Wrapper asíncrono que usa el layout pre-calculado.
+    """
+    # Usar el pipeline asíncrono con el layout ya disponible
+    result = await extract_and_translate_page_data_async(page_image, layout, tgt_lang, language_model)
+    return result
 
 def process_page_with_existing_pipeline(page_image: Image.Image, src_lang: str, tgt_lang: str, language_model: str, confidence: float) -> Dict[str, Any]:
     """
@@ -130,33 +143,21 @@ def build_translated_pdf(results_list: List[Dict[str, Any]], task_id: str, targe
 
 @celery_app.task(name='translate_pdf_orchestrator', bind=True)
 def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lang: str, language_model: str = "openai/gpt-4o-mini", confidence: float = 0.45):
-    """
-    Tarea orquestadora que recibe PDF bytes, sube a S3, convierte a imágenes y lanza procesamiento paralelo.
-    """
     try:
-        # El task_id es el ID de esta tarea de Celery
         task_id = self.request.id
-        logger.info(f"Iniciando orquestación S3 para tarea {task_id} -> {tgt_lang}")
+        logger.info(f"Iniciando orquestación para tarea {task_id}")
         
-        # 1. Subir PDF original a S3
+        # 1. Subir PDF y convertir a imágenes (sin cambios)
         self.update_state(state='PROGRESS', meta={'status': 'Preparando documento'})
         original_key = f"{task_id}/original.pdf"
         upload_bytes(original_key, file_content, content_type="application/pdf")
-        logger.info(f"PDF subido a S3: {original_key}")
-                
-        # 2. Convertir PDF a imágenes
-        self.update_state(state='PROGRESS', meta={'status': 'Analizando páginas'})
-        start_pdf_conversion = time.time()
-        images = convert_from_bytes(file_content, fmt="png", dpi=300)
-        pdf_conversion_time = time.time() - start_pdf_conversion
-        logger.info(f"=== PDF CONVERSION TIMING ===")
-        logger.info(f"PDF to images conversion: {pdf_conversion_time:.3f}s")
-        logger.info("=" * 30)
         
+        self.update_state(state='PROGRESS', meta={'status': 'Analizando páginas'})
+        images = convert_from_bytes(file_content, fmt="png", dpi=300)
         if not images:
             raise Exception("No se pudieron generar imágenes del PDF.")
         
-        # 3. Subir cada imagen a S3
+        # 2. Subir imágenes a S3 (sin cambios)
         page_keys = []
         for idx, img in enumerate(images):
             buf = BytesIO()
@@ -167,29 +168,102 @@ def translate_pdf_orchestrator(self, file_content: bytes, src_lang: str, tgt_lan
         
         logger.info(f"Subidas {len(page_keys)} imágenes a S3")
         
-        # 4. Lanzar procesamiento paralelo con chord
-        self.update_state(state='PROGRESS', meta={'status': 'Traduciendo contenido'})
+        # 3. MODIFICADO: Lanzar UNA tarea para el análisis de layout en lote
+        self.update_state(state='PROGRESS', meta={'status': 'Analizando estructura del documento'})
         
-        job = group(
-            process_page_task.s(task_id, i, key, src_lang, tgt_lang, language_model, confidence) 
-            for i, key in enumerate(page_keys)
+        # En lugar de un chord, ahora encadenamos tareas. El resultado de esta llamada
+        # contendrá el ID de la tarea finalizadora.
+        result_task = batch_layout_analysis_task.delay(
+            task_id, page_keys, src_lang, tgt_lang, language_model, confidence, original_key
         )
         
-        # 5. Chord con finalizador
-        result = chord(job)(finalize_task.s(task_id, original_key, src_lang, tgt_lang))
-        
-        logger.info(f"Chord iniciado. Tarea finalizadora ID: {result.id}")
+        logger.info(f"Tarea de análisis de layout en lote iniciada: {result_task.id}")
         
         return {
             'status': 'PROCESSING',
-            'message': f'Procesamiento paralelo iniciado para {len(page_keys)} páginas.',
-            'result_task_id': result.id
+            'message': f'Análisis de layout en lote iniciado para {len(page_keys)} páginas.',
+            'result_task_id': result_task.id # El cliente puede seguir esta tarea
         }
         
     except Exception as e:
         logger.error(f"Error en orquestación: {e}", exc_info=True)
         self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)})
         return {"status": "failed", "error": str(e)}
+
+
+@celery_app.task(name='batch_layout_analysis_task', bind=True)
+def batch_layout_analysis_task(self, task_id: str, page_keys: List[str], src_lang: str, tgt_lang: str, language_model: str, confidence: float, original_key: str):
+    try:
+        logger.info(f"Iniciando análisis de layout en lote para tarea {task_id}")
+        
+        # 1. Descargar todas las imágenes desde S3
+        images = [Image.open(BytesIO(download_bytes(key))).convert("RGB") for key in page_keys]
+        
+        # 2. Obtener layouts en un solo lote
+        layouts_data = get_layouts_in_batch(images, confidence=confidence)
+        
+        if len(layouts_data) != len(page_keys):
+            raise Exception("El número de layouts no coincide con el número de páginas.")
+        
+        logger.info(f"Layouts generados para {len(layouts_data)} páginas.")
+        self.update_state(state='PROGRESS', meta={'status': 'Traduciendo contenido'})
+
+        # 3. Lanzar procesamiento paralelo de traducción con un chord
+        job = group(
+            translate_page_content_task.s(task_id, i, key, layout, src_lang, tgt_lang, language_model) 
+            for i, (key, layout) in enumerate(zip(page_keys, layouts_data))
+        )
+        
+        # El resultado del chord se enviará a la tarea finalizadora
+        result = chord(job)(finalize_task.s(task_id, original_key, src_lang, tgt_lang))
+        
+        logger.info(f"Chord de traducción iniciado. Tarea finalizadora ID: {result.id}")
+        # Devolvemos el ID de la tarea finalizadora para seguimiento
+        return {'status': 'Translation tasks dispatched', 'finalize_task_id': result.id}
+
+    except Exception as e:
+        logger.error(f"Error en análisis de layout en lote: {e}", exc_info=True)
+        self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)})
+        # Aquí podrías notificar a la tarea finalizadora que algo falló, o manejarlo de otra forma.
+        return {"status": "failed", "error": str(e)}
+
+@celery_app.task(
+    name='translate_page_content_task', 
+    bind=True,
+    autoretry_for=(FlexibleChecksumError,),
+    retry_kwargs={'max_retries': 3},
+    retry_backoff=True,
+    retry_backoff_max=60
+)
+def translate_page_content_task(self, task_id: str, page_number: int, image_key: str, layout_data: List[Dict], src_lang: str, tgt_lang: str, language_model: str):
+    try:
+        logger.info(f"Traduciendo contenido de página {page_number} para tarea {task_id}")
+        
+        # 1. Descargar imagen desde S3
+        img_bytes = download_bytes(image_key)
+        page_image = Image.open(BytesIO(img_bytes)).convert("RGB")
+        
+        # 2. Procesar página con el pipeline asíncrono
+        # Ejecutamos el código asíncrono dentro de la tarea síncrona de Celery
+        result = asyncio.run(
+            process_page_with_pipeline_async(page_image, layout_data, tgt_lang, language_model)
+        )
+        
+        # 3. Añadir metadatos
+        result["page_number"] = page_number
+        result["error"] = None
+        
+        logger.info(f"Página {page_number} traducida exitosamente")
+        return result
+    
+    except Exception as e:
+        logger.error(f"Error traduciendo página {page_number}: {e}", exc_info=True)
+        return {
+            "page_number": page_number, "text_regions": [], "image_regions": [],
+            "page_dimensions": None, "error": str(e),
+        }
+
+
 
 
 @celery_app.task(

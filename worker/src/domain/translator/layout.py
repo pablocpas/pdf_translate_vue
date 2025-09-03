@@ -7,6 +7,7 @@ from doclayout_yolo import YOLOv10
 from shapely.geometry import box, Polygon, MultiPolygon, GeometryCollection
 from shapely.ops import unary_union
 import os
+import tempfile
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,69 @@ class LayoutModel:
     def get_model(self):
         """Devuelve la instancia del modelo."""
         return self.model
+
+
+def get_layouts_in_batch(images: List[Image.Image], model_type="yolov10_doc", confidence: float = 0.45) -> List[List[LayoutElement]]:
+    """
+    Obtiene el layout de una lista de imágenes usando el modelo YOLOv10 en modo batch.
+    
+    Args:
+        images: Lista de imágenes a procesar (objetos PIL.Image).
+    
+    Returns:
+        Una lista de layouts. Cada layout es una lista de LayoutElement.
+    """
+    model = LayoutModel(model_type).get_model()
+    temp_files = []
+    
+    try:
+        # El modelo necesita rutas de archivo, así que creamos archivos temporales
+        for img in images:
+            temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            img.save(temp_file.name, format='PNG')
+            temp_files.append(temp_file.name)
+        
+        if not temp_files:
+            return []
+
+        logger.info(f"Procesando {len(temp_files)} imágenes en un lote...")
+        
+        # Llamada al predict con la lista de rutas y el tamaño del lote
+        # Usamos device="cpu" para asegurar compatibilidad
+        det_results = model.predict(source=temp_files, conf=confidence, batch=len(temp_files), device="cpu")
+        
+        all_layouts = []
+        if not det_results:
+            return [[] for _ in images] # Devuelve una lista vacía por cada imagen
+
+        # det_results es una lista de resultados, uno por cada imagen
+        for detections in det_results:
+            page_layout = []
+            for det in detections.boxes.data:
+                x1, y1, x2, y2, score, class_id = det.tolist()
+                class_name = detections.names[int(class_id)]
+                region_type = YOLO_LABEL_MAP.get(class_name)
+                
+                if region_type:
+                    page_layout.append(LayoutElement(
+                        box=Rectangle(x_1=x1, y_1=y1, x_2=x2, y_2=y2),
+                        type=region_type,
+                        score=score
+                    ))
+            all_layouts.append(page_layout)
+            
+        return all_layouts
+
+    except Exception as e:
+        logger.error(f"Error en el procesamiento por lotes del layout: {e}", exc_info=True)
+        return [[] for _ in images] # En caso de error, devuelve layouts vacíos
+    finally:
+        # Asegurarse de que todos los archivos temporales se eliminen
+        for path in temp_files:
+            try:
+                os.unlink(path)
+            except:
+                pass
 
 
 def get_layout(image: Image.Image, model_type="yolov10_doc", confidence: float = 0.45) -> List[LayoutElement]:

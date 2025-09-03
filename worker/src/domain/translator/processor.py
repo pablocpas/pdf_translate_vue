@@ -64,6 +64,77 @@ def get_font_for_language(target_language: str) -> str:
 # Añade esta constante al principio del archivo processor.py o dentro de la función
 OCR_MARGIN_PERCENT = 0.015  # 2% de margen
 
+
+async def extract_and_translate_page_data_async(
+    page_image: Image.Image, 
+    layout: List[LayoutElement],
+    target_language: str, 
+    language_model: str
+) -> Dict[str, Any]:
+    """
+    Procesa una sola página usando un layout pre-calculado y traduce el texto de forma asíncrona.
+    """
+    page_width, page_height = page_image.size
+    
+    # 1. Separar regiones de texto e imagen a partir del layout proporcionado
+    text_boxes, image_elements = merge_overlapping_text_regions(layout)
+
+    # 2. Extraer texto con OCR de cada región de texto
+    original_texts = []
+    ocr_results = []
+    for box, _ in text_boxes:
+        # Coordenadas para recortar la imagen
+        coords = (box.x_1, box.y_1, box.x_2, box.y_2)
+        text = extract_text_from_image(page_image, coords)
+        if text.strip():
+            original_texts.append(text)
+            ocr_results.append({"text": text, "box": box})
+
+    # 3. Traducir todos los textos en un solo lote de forma asíncrona
+    # MODIFICADO: Se usa 'await' para la llamada de red
+    translated_texts = await translate_text(original_texts, target_language, language_model)
+
+    # 4. Construir las estructuras de datos de resultado
+    text_regions_data = []
+    for i, ocr_res in enumerate(ocr_results):
+        box = ocr_res["box"]
+        # El eje Y en reportlab empieza abajo, hay que invertirlo
+        y1_pdf = page_height - box.y_2
+        
+        text_regions_data.append({
+            "id": f"text_{i}",
+            "original_text": ocr_res["text"],
+            "translated_text": translated_texts[i],
+            "position": {
+                "x": box.x_1,
+                "y": y1_pdf,
+                "width": box.x_2 - box.x_1,
+                "height": box.y_2 - box.y_1,
+            },
+        })
+
+    image_regions_data = []
+    for i, (element, _) in enumerate(image_elements):
+        box = element.box
+        y1_pdf = page_height - box.y_2
+        image_regions_data.append({
+            "id": f"img_{i}",
+            "coordinates": {"x1": box.x_1, "y1": box.y_1, "x2": box.x_2, "y2": box.y_2},
+            "position": {
+                "x": box.x_1,
+                "y": y1_pdf,
+                "width": box.x_2 - box.x_1,
+                "height": box.y_2 - box.y_1,
+            },
+        })
+    
+    return {
+        "page_dimensions": {"width": page_width, "height": page_height},
+        "text_regions": text_regions_data,
+        "image_regions": image_regions_data,
+    }
+
+
 def extract_and_translate_page_data(image_path: str, target_language: str, language_model: str, confidence: float) -> Dict[str, Any]:
     """
     Procesa una sola imagen de página para extraer, traducir y estructurar
