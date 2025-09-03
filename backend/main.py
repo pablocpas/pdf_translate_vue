@@ -125,7 +125,7 @@ async def translate_pdf_endpoint(
         file_content = await file.read()
         
         # Lanzar tarea de orquestación con los nuevos parámetros
-        result = celery_app.send_task('translate_pdf_orchestrator', args=[file_content, srcLang, tgtLang, languageModel, confidence])
+        result = celery_app.send_task('process_pdf_document', args=[file_content, srcLang, tgtLang, languageModel, confidence])
         
         # Usar el ID de Celery como task_id único para todo
         task_id = result.id
@@ -363,7 +363,7 @@ async def update_translation_data(task_id: str, translation_data: TranslationDat
         upload_bytes(translation_key, updated_data, "application/json")
         
         # Regenerar PDF con nuevos datos
-        result = celery_app.send_task('regenerate_pdf_s3', args=[task_id, translation_data.dict(), position_data])
+        result = celery_app.send_task('regenerate_pdf_from_storage', args=[task_id, translation_data.dict(), position_data])
         task_result = result.get(timeout=60)
         
         if "error" in task_result:
