@@ -417,3 +417,29 @@ async def health_check():
             "s3_connection": "error",
             "error": str(e)
         }
+
+
+@app.post("/test/async-calls")
+async def test_async_calls_endpoint():
+    """
+    Endpoint para probar las llamadas asíncronas en tareas Celery.
+    """
+    try:
+        logger.info("Iniciando prueba de llamadas asíncronas desde endpoint")
+        
+        # Lanzar la tarea de prueba
+        result = celery_app.send_task('test_async_calls')
+        
+        # Obtener el resultado (esperar un poco para que complete)
+        task_result = result.get(timeout=30)
+        
+        return {
+            "success": True,
+            "task_id": result.id,
+            "message": "Prueba de llamadas asíncronas completada",
+            "result": task_result
+        }
+        
+    except Exception as e:
+        logger.error(f"Error en prueba de llamadas asíncronas: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error ejecutando prueba: {str(e)}")

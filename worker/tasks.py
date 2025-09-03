@@ -9,6 +9,8 @@ import tempfile
 import time
 from typing import List, Dict, Any
 from io import BytesIO
+import asyncio
+import aiohttp
 
 from botocore.exceptions import FlexibleChecksumError
 
@@ -406,4 +408,63 @@ def regenerate_pdf_s3_task(task_id: str, translation_data: dict, position_data: 
         logger.error(f"Error regenerando PDF S3 para tarea {task_id}: {e}", exc_info=True)
         return {
             "error": str(e)
+        }
+
+
+@celery_app.task(name='test_async_calls')
+def test_async_calls():
+    """
+    Prueba de concepto: tarea Celery que hace llamadas asíncronas.
+    """
+    async def make_async_request(url: str):
+        """Función asíncrona para hacer una petición HTTP"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    return {
+                        'url': url,
+                        'status': response.status,
+                        'headers': dict(response.headers),
+                        'text': await response.text()[:200]  # Solo primeros 200 caracteres
+                    }
+        except Exception as e:
+            return {'url': url, 'error': str(e)}
+    
+    async def test_multiple_requests():
+        """Función que hace múltiples peticiones concurrentemente"""
+        urls = [
+            'https://httpbin.org/get',
+            'https://httpbin.org/uuid',
+            'https://httpbin.org/delay/1'
+        ]
+        
+        # Ejecutar peticiones concurrentemente
+        tasks = [make_async_request(url) for url in urls]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        return {
+            'message': 'Async calls completed successfully',
+            'results_count': len(results),
+            'results': results
+        }
+    
+    try:
+        logger.info("Iniciando prueba de llamadas asíncronas en tarea Celery")
+        
+        # Ejecutar el código asíncrono dentro de la tarea síncrona de Celery
+        start_time = time.time()
+        result = asyncio.run(test_multiple_requests())
+        execution_time = time.time() - start_time
+        
+        result['execution_time'] = execution_time
+        result['timestamp'] = time.time()
+        
+        logger.info(f"Prueba async completada en {execution_time:.3f}s")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error en prueba async: {e}", exc_info=True)
+        return {
+            'error': str(e),
+            'message': 'Failed to execute async calls'
         }
