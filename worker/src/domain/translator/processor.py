@@ -16,8 +16,8 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 
 from .layout import merge_overlapping_text_regions
-from .ocr import extract_text_from_image
-from .utils import adjust_paragraph_font_size, clean_text
+from .ocr import extract_text_with_boxes_from_image
+from .utils import adjust_paragraph_font_size, clean_text, get_font_for_language
 from .pdf_utils import get_page_dimensions_from_image
 from ...infrastructure.config.settings import MARGIN, DEBUG_MODE
 
@@ -74,22 +74,27 @@ def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float
             
             text_layout_regions, image_layout_regions = merge_overlapping_text_regions(page_layout)
 
-        
+            ocr_results = extract_text_with_boxes_from_image(page_image) # Ej: [('Hola', (50,50,100,70)), ('mundo', (110,50,180,70))]
+
+
             # Lista para las regiones de texto de ESTA página
             final_text_regions = []
             
             # 2a. OCR - Extrae el texto de cada región
             for region_idx, (rect, _) in enumerate(text_layout_regions):
-                x1_px, y1_px, x2_px, y2_px = rect
-                box_width, box_height = x2_px - x1_px, y2_px - y1_px
-                margin_x, margin_y = box_width * OCR_MARGIN_PERCENT, box_height * OCR_MARGIN_PERCENT
+                x1_r, y1_r, x2_r, y2_r = rect
                 
-                cropped_image = page_image.crop((
-                    max(0, x1_px - margin_x), max(0, y1_px - margin_y),
-                    min(page_image.width, x2_px + margin_x), min(page_image.height, y2_px + margin_y)
-                ))
+                region_words = []
+                # Iterar sobre las palabras detectadas por el OCR
+                for word_text, (x1_w, y1_w, x2_w, y2_w) in ocr_results:
+                    # Comprobar si el centro de la palabra está dentro de la región del layout
+                    word_center_x = (x1_w + x2_w) / 2
+                    word_center_y = (y1_w + y2_w) / 2
+                    
+                    if (x1_r <= word_center_x <= x2_r) and (y1_r <= word_center_y <= y2_r):
+                        region_words.append(word_text)
                 
-                original_text = clean_text(extract_text_from_image(cropped_image))
+                original_text = clean_text(" ".join(region_words))
                 
                 # Solo añadimos la región si contiene texto
                 if original_text:
