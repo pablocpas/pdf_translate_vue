@@ -1,11 +1,28 @@
-# Tareas del worker para traducción de PDFs
-# 
-# FLUJO DE TRABAJO:
-# 1. process_pdf_document: Orquesta todo el proceso de traducción
-# 2. extract_and_translate_batch: Procesa lotes de páginas (detección + OCR + traducción)
-# 3. assemble_final_pdf: Combina resultados en el PDF final
-# 4. regenerate_pdf_from_storage: Regenera PDF desde datos de traducción guardados
+"""Módulo principal de tareas Celery para el procesamiento de documentos PDF.
 
+Este archivo define el flujo de trabajo asíncrono para la traducción de PDFs.
+Contiene la tarea orquestadora principal que divide el trabajo, las tareas
+que procesan lotes de páginas en paralelo, y la tarea finalizadora que
+ensambla el documento traducido.
+
+**Flujo de trabajo principal:**
+
+1.  **process_pdf_document**:
+    Orquesta todo el proceso. Convierte PDF a imágenes,
+    crea lotes de páginas y lanza un `chord` de Celery.
+
+2.  **extract_and_translate_batch**:
+    Tarea ejecutada en paralelo para cada lote.
+    Realiza la detección de layout, OCR y traducción.
+
+3.  **assemble_final_pdf**:
+    Tarea finalizadora del `chord`. Recopila los resultados
+    de todos los lotes, construye el PDF final y guarda los metadatos.
+
+4.  **regenerate_pdf_from_storage**:
+    Tarea independiente para regenerar un PDF
+    a partir de datos de traducción previamente guardados y modificados.
+"""
 from celery import Celery, group, chord
 import os
 import logging
@@ -20,12 +37,8 @@ from pdf2image import convert_from_bytes
 from reportlab.pdfgen import canvas
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import Paragraph
-
-import asyncio
-
-
-from src.domain.translator.translator import translate_text_async
 from reportlab.lib.utils import ImageReader
+import asyncio
 
 # Imports del proyecto
 from src.domain.translator.processor import extract_page_data_in_batch
@@ -45,24 +58,27 @@ celery_app = Celery(
 )
 
 # CONSTANTES DE CONFIGURACIÓN
-
 PAGE_PROCESSING_BATCH_SIZE = 16
-
 
 # =============================================================================
 # UTILIDADES PARA CONSTRUCCIÓN DE PDF
 # =============================================================================
+
 def build_translated_pdf(results_list: List[Dict[str, Any]], task_id: str, target_language: str) -> bytes:
-    """
-    Construye el PDF final desde los resultados procesados de las páginas.
-    
-    Args:
-        results_list: Lista de resultados de procesamiento con regiones de texto/imagen
-        task_id: Identificador único de tarea para claves de almacenamiento S3
-        target_language: Código de idioma destino para selección de fuente
-    
-    Returns:
-        Documento PDF completo como bytes
+    """Construye un documento PDF a partir de una lista de datos de página procesados.
+
+    Itera sobre los datos de cada página, dibuja las regiones de imagen recortadas
+    y renderiza los párrafos de texto traducido en sus posiciones correspondientes.
+
+    :param results_list: Lista de diccionarios, cada uno representando una página
+                         con sus regiones de texto, imagen y dimensiones.
+    :type results_list: List[Dict[str, Any]]
+    :param task_id: El ID de la tarea, usado para descargar imágenes de página desde S3.
+    :type task_id: str
+    :param target_language: El código del idioma de destino para seleccionar la fuente adecuada.
+    :type target_language: str
+    :return: El documento PDF completo como un objeto de bytes.
+    :rtype: bytes
     """
     buffer = BytesIO()
     pdf_canvas = canvas.Canvas(buffer)
@@ -124,34 +140,31 @@ def build_translated_pdf(results_list: List[Dict[str, Any]], task_id: str, targe
     buffer.seek(0)
     return buffer.getvalue()
 
-
 # =============================================================================
 # DEFINICIÓN DE TAREAS CELERY
 # =============================================================================
 
-# TAREA ORQUESTADORA PRINCIPAL
-
 @celery_app.task(name='process_pdf_document', bind=True)
 def process_pdf_document(self, file_content: bytes, src_lang: str, tgt_lang: str, language_model: str = "openai/gpt-4o-mini", confidence: float = 0.45):
-    """
-    Tarea orquestadora principal: Convierte PDF a imágenes, crea lotes,
-    y lanza tareas de procesamiento en lotes paralelas.
-    
-    FLUJO:
-    1. Subir PDF original a almacenamiento
-    2. Convertir páginas PDF a imágenes
-    3. Crear lotes de procesamiento
-    4. Lanzar procesamiento paralelo de lotes vía Celery chord
-    
-    Args:
-        file_content: Archivo PDF como bytes
-        src_lang: Código de idioma fuente
-        tgt_lang: Código de idioma destino
-        language_model: AI model for translation
-        confidence: Layout detection confidence threshold
-    
-    Returns:
-        dict: Task status and result task ID
+    """Tarea orquestadora principal que inicia el flujo de traducción de un PDF.
+
+    Sube el PDF original, lo convierte en imágenes por página, agrupa las páginas
+    en lotes y lanza un `chord` de Celery para procesar los lotes en paralelo. La
+    tarea finalizadora del `chord` (`assemble_final_pdf`) se encargará de unir los resultados.
+
+    :param self: La instancia de la tarea de Celery (inyectada por `bind=True`).
+    :param file_content: El contenido del archivo PDF en bytes.
+    :type file_content: bytes
+    :param src_lang: Código del idioma de origen.
+    :type src_lang: str
+    :param tgt_lang: Código del idioma de destino.
+    :type tgt_lang: str
+    :param language_model: Identificador del modelo de IA a usar para la traducción.
+    :type language_model: str
+    :param confidence: Umbral de confianza para la detección de layout.
+    :type confidence: float
+    :return: Un diccionario con el estado del proceso y el ID de la tarea finalizadora.
+    :rtype: dict
     """
     try:
         task_id = self.request.id
@@ -203,20 +216,21 @@ def process_pdf_document(self, file_content: bytes, src_lang: str, tgt_lang: str
         self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)})
         return {"status": "failed", "error": str(e)}
 
-
-# TRANSLATION PIPELINE
-
 async def translate_extracted_text(extracted_data: List[Dict[str, Any]], tgt_lang: str, language_model: str) -> List[Dict[str, Any]]:
-    """
-    Manages concurrent translation API calls for a batch of pages.
-    
-    Args:
-        extracted_data: List of page data with extracted text regions
-        tgt_lang: Target language code
-        language_model: AI model identifier
-    
-    Returns:
-        List[Dict]: Same data structure with translated_text added to regions
+    """Gestiona llamadas concurrentes a la API de traducción para un lote de páginas.
+
+    Utiliza `asyncio.gather` para realizar todas las solicitudes de traducción
+    de un lote de forma paralela, mejorando significativamente el rendimiento.
+
+    :param extracted_data: Lista de datos de página, cada una con regiones de texto extraídas.
+    :type extracted_data: List[Dict[str, Any]]
+    :param tgt_lang: Código del idioma de destino.
+    :type tgt_lang: str
+    :param language_model: Identificador del modelo de IA.
+    :type language_model: str
+    :return: La misma estructura de datos de entrada, pero con el campo `translated_text`
+             añadido a cada región de texto.
+    :rtype: List[Dict[str, Any]]
     """
     translation_coroutines = []
     for page_data in extracted_data:
@@ -236,7 +250,6 @@ async def translate_extracted_text(extracted_data: List[Dict[str, Any]], tgt_lan
         translated_texts = all_translated_results[i]
         text_regions = page_data.get("text_regions", [])
         
-        # Fallback en caso de que la API no devuelva el número correcto de traducciones
         if len(translated_texts) == len(text_regions):
             for j, region in enumerate(text_regions):
                 region["translated_text"] = translated_texts[j]
@@ -247,10 +260,6 @@ async def translate_extracted_text(extracted_data: List[Dict[str, Any]], tgt_lan
     
     return extracted_data
 
-
-
-# BATCH PROCESSING TASK
-
 @celery_app.task(
     name='extract_and_translate_batch', 
     bind=True,
@@ -260,40 +269,36 @@ async def translate_extracted_text(extracted_data: List[Dict[str, Any]], tgt_lan
     retry_backoff_max=60
 )
 def extract_and_translate_batch(self, task_id: str, page_batch_info: List[Tuple[int, str]], src_lang: str, tgt_lang: str, language_model: str, confidence: float):
-    """
-    Worker task: Processes a BATCH of pages performing layout detection, OCR, and translation.
-    
-    PROCESS:
-    1. Download page images from storage
-    2. Perform layout detection and OCR (batch processing)
-    3. Translate extracted text via API
-    4. Return structured page data with translations
-    
-    Args:
-        task_id: Unique task identifier
-        page_batch_info: List of (page_number, storage_key) tuples
-        src_lang: Source language code
-        tgt_lang: Target language code  
-        language_model: AI model for translation
-        confidence: Layout detection confidence
-    
-    Returns:
-        List[Dict]: Processed page data with text/image regions
+    """Tarea de worker que procesa un lote de páginas.
+
+    Realiza la detección de layout, OCR y traducción para un conjunto de páginas.
+    Está diseñada para ser ejecutada en paralelo por múltiples workers de Celery.
+
+    :param self: Instancia de la tarea de Celery.
+    :param task_id: Identificador único de la tarea global.
+    :type task_id: str
+    :param page_batch_info: Lista de tuplas `(page_number, storage_key)` para el lote.
+    :type page_batch_info: List[Tuple[int, str]]
+    :param src_lang: Código del idioma de origen.
+    :type src_lang: str
+    :param tgt_lang: Código del idioma de destino.
+    :type tgt_lang: str
+    :param language_model: Modelo de IA a utilizar.
+    :type language_model: str
+    :param confidence: Umbral de confianza para la detección de layout.
+    :type confidence: float
+    :return: Una lista de diccionarios, cada uno conteniendo los datos procesados
+             de una página (regiones de texto, imágenes, etc.).
+    :rtype: List[Dict[str, Any]]
     """
     try:
         page_numbers = [info[0] for info in page_batch_info]
         logger.info(f"Procesando lote de páginas {page_numbers} para tarea {task_id}")
         
-        # Step 1: Download batch images from storage
         page_images = [Image.open(BytesIO(download_bytes(key))).convert("RGB") for _, key in page_batch_info]
-        
-        # Step 2: Extract data (layout detection + OCR) using batch processing
         extracted_data = extract_page_data_in_batch(page_images, confidence)
-        
-        # Step 3: Translate all extracted text
         translated_data = asyncio.run(translate_extracted_text(extracted_data, tgt_lang, language_model))
 
-        # Step 4: Assign page numbers to results
         final_batch_results = []
         for i, result in enumerate(translated_data):
             result["page_number"] = page_batch_info[i][0]
@@ -315,65 +320,53 @@ def extract_and_translate_batch(self, task_id: str, page_batch_info: List[Tuple[
         } for page_num, _ in page_batch_info]
         return error_results
 
-
-# PDF ASSEMBLY TASK
-
 @celery_app.task(name='assemble_final_pdf', bind=True)
 def assemble_final_pdf(self, results_from_batches: List[List[Dict[str, Any]]], task_id: str, original_key: str, src_lang: str, tgt_lang: str):
-    """
-    Finalizer task: Assembles the complete PDF from batch results and uploads to storage.
-    
-    PROCESS:
-    1. Flatten and sort all batch results by page number
-    2. Build final PDF with translated text and preserved layout
-    3. Generate translation and position metadata
-    4. Upload all files to storage
-    
-    Args:
-        results_from_batches: Nested list of batch processing results
-        task_id: Unique task identifier
-        original_key: Storage key for original PDF
-        src_lang: Source language code
-        tgt_lang: Target language code
-    
-    Returns:
-        dict: Completion status and storage keys
+    """Tarea finalizadora que ensambla el PDF completo a partir de los resultados de los lotes.
+
+    Esta tarea se ejecuta una vez que todas las tareas `extract_and_translate_batch`
+    de un `chord` han finalizado. Consolida los resultados, construye el PDF,
+    genera y guarda los metadatos de traducción y posición.
+
+    :param self: Instancia de la tarea de Celery.
+    :param results_from_batches: Una lista de listas, donde cada sublista es el resultado
+                                 de una tarea de procesamiento de lote.
+    :type results_from_batches: List[List[Dict[str, Any]]]
+    :param task_id: Identificador único de la tarea global.
+    :type task_id: str
+    :param original_key: Clave de S3 del PDF original.
+    :type original_key: str
+    :param src_lang: Código del idioma de origen.
+    :type src_lang: str
+    :param tgt_lang: Código del idioma de destino.
+    :type tgt_lang: str
+    :return: Un diccionario con el estado final y las claves de S3 de los artefactos generados.
+    :rtype: dict
     """
     try:
-        # Flatten and sort batch results by page number
         results_list = [item for sublist in results_from_batches for item in sublist]
         logger.info(f"Finalizing task {task_id} with {len(results_list)} pages from {len(results_from_batches)} batches.")
-        
         results_list.sort(key=lambda r: r.get("page_number", 0))
         
         self.update_state(state='PROGRESS', meta={'status': 'Finalizando documento'})
         
-        # Build the final PDF with translations
         translated_pdf_bytes = build_translated_pdf(results_list, task_id, tgt_lang)
-        
         translated_key = f"{task_id}/translated/translated.pdf"
         upload_bytes(translated_key, translated_pdf_bytes, content_type="application/pdf")
         
-        # Build and upload translation metadata
         translation_data = {
             "pages": [{
                 "page_number": page_data.get('page_number', i),
                 "translations": [{
-                    "id": text_region["id"],
-                    "original_text": text_region["original_text"],
-                    "translated_text": text_region["translated_text"]
+                    "id": text_region["id"], "original_text": text_region["original_text"], "translated_text": text_region["translated_text"]
                 } for text_region in page_data.get("text_regions", [])]
             } for i, page_data in enumerate(results_list) if not page_data.get("error")]
         }
         
         position_data = {
             "pages": [{
-                "page_number": page_data.get('page_number', i),
-                "dimensions": page_data.get("page_dimensions"),
-                "regions": [{
-                    "id": text_region["id"],
-                    "position": text_region["position"]
-                } for text_region in page_data.get("text_regions", [])],
+                "page_number": page_data.get('page_number', i), "dimensions": page_data.get("page_dimensions"),
+                "regions": [{"id": text_region["id"], "position": text_region["position"]} for text_region in page_data.get("text_regions", [])],
                 "image_regions": page_data.get("image_regions", [])
             } for i, page_data in enumerate(results_list) if not page_data.get("error")]
         }
@@ -385,24 +378,19 @@ def assemble_final_pdf(self, results_from_batches: List[List[Dict[str, Any]]], t
         upload_bytes(position_key, json.dumps(position_data, ensure_ascii=False, indent=2).encode(), "application/json")
         
         errors = [r["error"] for r in results_list if r and r.get("error")]
-        
         meta_data = {
             "pages": len(results_list), "errors": errors, "src_lang": src_lang, "tgt_lang": tgt_lang,
             "completed_at": json.dumps({"$date": {"$numberLong": str(int(time.time() * 1000))}})
         }
-        
         meta_key = f"{task_id}/translated/metadata.json"
         upload_bytes(meta_key, json.dumps(meta_data, ensure_ascii=False, indent=2).encode(), "application/json")
         
         logger.info(f"Task {task_id} completed successfully")
         
         return {
-            "status": "COMPLETED",
-            "translated_key": translated_key,
-            "translation_data_key": translation_key,
-            "position_data_key": position_key,
-            "meta_key": meta_key,
-            "errors": errors,
+            "status": "COMPLETED", "translated_key": translated_key,
+            "translation_data_key": translation_key, "position_data_key": position_key,
+            "meta_key": meta_key, "errors": errors,
         }
         
     except Exception as e:
@@ -410,31 +398,27 @@ def assemble_final_pdf(self, results_from_batches: List[List[Dict[str, Any]]], t
         self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)})
         return {"status": "failed", "error": str(e)}
 
-
-# PDF REGENERATION TASK
-
 @celery_app.task(name='regenerate_pdf_from_storage')
 def regenerate_pdf_from_storage(task_id: str, translation_data: dict, position_data: dict):
-    """
-    Regenerates PDF from stored translation data with updated translations.
-    
-    Used for editing translations without re-processing the entire document.
-    
-    Args:
-        task_id: Unique task identifier
-        translation_data: Dictionary with translation text data
-        position_data: Dictionary with layout positions and dimensions
-    
-    Returns:
-        dict: Success status and storage key
+    """Regenera un PDF a partir de datos de traducción y posición almacenados.
+
+    Esta tarea se utiliza cuando un usuario edita las traducciones a través de la
+    interfaz. Recibe los textos actualizados y la información de layout original
+    para reconstruir el PDF sin necesidad de un reprocesamiento completo (OCR, etc.).
+
+    :param task_id: Identificador único de la tarea.
+    :type task_id: str
+    :param translation_data: Diccionario con los datos de texto (original y traducido).
+    :type translation_data: dict
+    :param position_data: Diccionario con la información de layout (posiciones, dimensiones).
+    :type position_data: dict
+    :return: Un diccionario indicando el éxito y la clave de S3 del nuevo PDF.
+    :rtype: dict
     """
     try:
         logger.info(f"Regenerating PDF from storage for task {task_id}")
         
-        # Determinar idioma de destino
-        tgt_lang = "es" # Default
-        if position_data.get("meta", {}).get("tgt_lang"):
-             tgt_lang = position_data["meta"]["tgt_lang"]
+        tgt_lang = position_data.get("meta", {}).get("tgt_lang", "es")
 
         results_list = []
         for page in translation_data.get("pages", []):
@@ -449,22 +433,17 @@ def regenerate_pdf_from_storage(task_id: str, translation_data: dict, position_d
                 region_pos = next((r for r in page_pos.get("regions", []) if r["id"] == trans["id"]), None)
                 if region_pos:
                     text_regions.append({
-                        "id": trans["id"],
-                        "original_text": trans["original_text"],
-                        "translated_text": trans["translated_text"],
-                        "position": region_pos["position"]
+                        "id": trans["id"], "original_text": trans["original_text"],
+                        "translated_text": trans["translated_text"], "position": region_pos["position"]
                     })
             
             results_list.append({
-                "page_number": page_num,
-                "page_dimensions": dimensions,
-                "text_regions": text_regions,
-                "image_regions": page_pos.get("image_regions", []),
+                "page_number": page_num, "page_dimensions": dimensions,
+                "text_regions": text_regions, "image_regions": page_pos.get("image_regions", []),
                 "error": None
             })
         
         translated_pdf_bytes = build_translated_pdf(results_list, task_id, tgt_lang)
-        
         translated_key = f"{task_id}/translated/translated.pdf"
         upload_bytes(translated_key, translated_pdf_bytes, content_type="application/pdf")
         

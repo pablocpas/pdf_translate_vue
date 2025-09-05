@@ -1,3 +1,9 @@
+"""Módulo de infraestructura para la interacción con el almacenamiento S3 (o compatible como MinIO).
+
+Proporciona funciones de alto nivel para subir, descargar, verificar, eliminar
+y generar URLs prefirmadas para objetos en un bucket S3. La configuración
+del cliente se realiza de forma global al importar el módulo.
+"""
 import boto3
 from botocore.client import Config
 from botocore.exceptions import ClientError
@@ -28,7 +34,14 @@ _client = _session.client(
 )
 
 def ensure_bucket_exists():
-    """Create bucket if it doesn't exist"""
+    """Verifica si el bucket configurado existe y lo crea si es necesario.
+    
+    Usa una llamada `head_bucket` para comprobar la existencia, que es más
+    eficiente que listar todos los buckets.
+
+    :raises ClientError: Si ocurre un error al contactar con el servicio S3
+                         que no sea un '404 Not Found'.
+    """
     try:
         _client.head_bucket(Bucket=settings.AWS_S3_BUCKET)
         logger.info(f"Bucket {settings.AWS_S3_BUCKET} exists")
@@ -42,15 +55,21 @@ def ensure_bucket_exists():
             raise
 
 def upload_bytes(key: str, data: bytes, content_type: Optional[str] = None):
-    """Upload bytes to S3"""
+    """Sube un objeto de bytes a una clave específica en S3.
+
+    :param key: La ruta completa (clave) donde se almacenará el objeto en el bucket.
+    :type key: str
+    :param data: El contenido del objeto en bytes.
+    :type data: bytes
+    :param content_type: El tipo MIME del contenido (ej. 'application/pdf').
+    :type content_type: Optional[str]
+    :raises Exception: Propaga cualquier excepción ocurrida durante la subida.
+    """
     try:
         extra = {"ContentType": content_type} if content_type else {}
-        
-        # No usar ChecksumAlgorithm con MinIO por compatibilidad
         _client.put_object(Bucket=settings.AWS_S3_BUCKET, Key=key, Body=data, **extra)
         logger.info(f"Uploaded {len(data)} bytes to s3://{settings.AWS_S3_BUCKET}/{key}")
         
-        # Verificar que el archivo se subió correctamente
         if key_exists(key):
             logger.info(f"Upload verified for {key}")
         else:
@@ -61,7 +80,14 @@ def upload_bytes(key: str, data: bytes, content_type: Optional[str] = None):
         raise
 
 def download_bytes(key: str) -> bytes:
-    """Download bytes from S3"""
+    """Descarga un objeto de S3 como bytes.
+
+    :param key: La clave del objeto a descargar.
+    :type key: str
+    :return: El contenido del objeto.
+    :rtype: bytes
+    :raises Exception: Propaga cualquier excepción si el objeto no existe o hay un error.
+    """
     try:
         obj = _client.get_object(Bucket=settings.AWS_S3_BUCKET, Key=key)
         data = obj["Body"].read()
@@ -72,7 +98,14 @@ def download_bytes(key: str) -> bytes:
         raise
 
 def key_exists(key: str) -> bool:
-    """Check if a key exists in S3"""
+    """Comprueba de forma eficiente si una clave existe en el bucket.
+
+    :param key: La clave a comprobar.
+    :type key: str
+    :return: True si el objeto existe, False en caso contrario.
+    :rtype: bool
+    :raises ClientError: Si ocurre un error de Boto3 que no sea un 404.
+    """
     try:
         _client.head_object(Bucket=settings.AWS_S3_BUCKET, Key=key)
         return True
@@ -82,7 +115,14 @@ def key_exists(key: str) -> bool:
         raise
 
 def delete_prefix(prefix: str):
-    """Delete all objects with a given prefix"""
+    """Elimina todos los objetos en S3 que comiencen con un prefijo dado.
+
+    Es útil para limpiar todos los archivos asociados a una tarea. Maneja la
+    paginación y la eliminación en lotes de 1000 objetos.
+
+    :param prefix: El prefijo de las claves a eliminar (ej. 'task-id/').
+    :type prefix: str
+    """
     try:
         paginator = _client.get_paginator("list_objects_v2")
         to_delete = []
@@ -91,21 +131,13 @@ def delete_prefix(prefix: str):
             for item in page.get("Contents", []):
                 to_delete.append({"Key": item["Key"]})
             
-            # Delete in batches of 1000 (S3 limit)
             if len(to_delete) >= 1000:
-                _client.delete_objects(
-                    Bucket=settings.AWS_S3_BUCKET, 
-                    Delete={"Objects": to_delete}
-                )
+                _client.delete_objects(Bucket=settings.AWS_S3_BUCKET, Delete={"Objects": to_delete})
                 logger.info(f"Deleted batch of {len(to_delete)} objects with prefix {prefix}")
                 to_delete.clear()
         
-        # Delete remaining objects
         if to_delete:
-            _client.delete_objects(
-                Bucket=settings.AWS_S3_BUCKET, 
-                Delete={"Objects": to_delete}
-            )
+            _client.delete_objects(Bucket=settings.AWS_S3_BUCKET, Delete={"Objects": to_delete})
             logger.info(f"Deleted final batch of {len(to_delete)} objects with prefix {prefix}")
             
     except Exception as e:
@@ -118,9 +150,25 @@ def presigned_get_url(
     inline_filename: Optional[str] = None,
     content_type: str = "application/pdf"
 ) -> str:
-    """
-    Genera una URL S3 prefirmada pública de forma robusta.
-    Utiliza urllib.parse para evitar errores al construir la URL final.
+    """Genera una URL S3 prefirmada y la adapta a la URL pública si está configurada.
+
+    El proceso consiste en generar primero una URL interna (ej. http://minio:9000/...)
+    y luego, si se ha definido una URL pública (AWS_S3_PUBLIC_ENDPOINT_URL),
+    reemplaza el host y el puerto manteniendo la ruta y los parámetros de firma,
+    resultando en una URL accesible desde el exterior.
+
+    :param key: La clave del objeto para el que se generará la URL.
+    :type key: str
+    :param expires: Duración de la validez de la URL en segundos.
+    :type expires: int
+    :param inline_filename: Si se proporciona, la URL incluirá cabeceras para
+                            que el navegador muestre el archivo en lugar de descargarlo,
+                            con el nombre de archivo especificado.
+    :type inline_filename: Optional[str]
+    :param content_type: El tipo MIME del contenido, usado con `inline_filename`.
+    :type content_type: str
+    :return: Una URL temporal y segura para acceder al objeto.
+    :rtype: str
     """
     try:
         params = {
@@ -132,38 +180,27 @@ def presigned_get_url(
             params["ResponseContentType"] = content_type
             params["ResponseContentDisposition"] = f'inline; filename="{inline_filename}"'
 
-        # 1. Genera la URL prefirmada usando el cliente configurado con el endpoint INTERNO.
-        #    Ejemplo de resultado: http://minio:9000/pdf-translator-bucket/archivo.pdf?query...
         internal_url = _client.generate_presigned_url(
             "get_object",
             Params=params,
             ExpiresIn=expires
         )
-        logger.warning(f"DEBUG: Devolviendo URL interna directamente: {internal_url}")
-
-        # 2. Si no hay una URL pública definida, devolvemos la interna (útil para tests).
+        
         if not settings.AWS_S3_PUBLIC_ENDPOINT_URL:
             logger.warning("AWS_S3_PUBLIC_ENDPOINT_URL no está definida. Devolviendo URL interna.")
             return internal_url
 
-        # 3. Parseamos (descomponemos) ambas URLs en sus componentes.
         internal_parts = urlparse(internal_url)
         public_parts = urlparse(settings.AWS_S3_PUBLIC_ENDPOINT_URL)
-
-        # 4. Construimos la ruta final combinando la base de la ruta pública y la ruta del objeto.
-        #    - public_parts.path -> '/minio'
-        #    - internal_parts.path -> '/pdf-translator-bucket/archivo.pdf'
-        #    - Resultado deseado: '/minio/pdf-translator-bucket/archivo.pdf'
         final_path = public_parts.path.rstrip('/') + internal_parts.path
 
-        # 5. Reconstruimos la URL final usando las partes correctas de cada una.
         final_url_parts = (
-            public_parts.scheme,      # 'http' (de la URL pública)
-            public_parts.netloc,      # '37.187.253.172' (de la URL pública)
-            final_path,               # La ruta que acabamos de construir
-            internal_parts.params,    # Parámetros (usualmente vacío)
-            internal_parts.query,     # La firma y otros parámetros S3 (¡muy importante!)
-            internal_parts.fragment   # Fragmento (usualmente vacío)
+            public_parts.scheme,
+            public_parts.netloc,
+            final_path,
+            internal_parts.params,
+            internal_parts.query,
+            internal_parts.fragment
         )
         
         public_url = urlunparse(final_url_parts)
@@ -176,7 +213,13 @@ def presigned_get_url(
         raise
 
 def list_keys(prefix: str = "") -> list[str]:
-    """List all keys with a given prefix"""
+    """Lista todas las claves en el bucket que coinciden con un prefijo.
+
+    :param prefix: El prefijo a buscar. Si está vacío, lista todas las claves.
+    :type prefix: str
+    :return: Una lista de strings, donde cada string es una clave de objeto.
+    :rtype: list[str]
+    """
     try:
         paginator = _client.get_paginator("list_objects_v2")
         keys = []

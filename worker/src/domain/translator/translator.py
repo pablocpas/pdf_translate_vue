@@ -1,10 +1,16 @@
+"""Módulo de Traducción de Texto.
+
+Este archivo se encarga de la comunicación con la API de traducción
+(OpenAI a través de OpenRouter). Proporciona una función asíncrona para
+traducir lotes de texto, utilizando el formato de respuesta estructurada
+para garantizar la fiabilidad de la salida.
+"""
 import json
 import logging
 from typing import List
 from pydantic import BaseModel
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, APIConnectionError, RateLimitError, APIStatusError
 from ...infrastructure.config.settings import settings
-from openai import APIConnectionError, RateLimitError, APIStatusError
 
 # Cliente OpenAI configurado para OpenRouter
 client = AsyncOpenAI(
@@ -12,77 +18,49 @@ client = AsyncOpenAI(
     api_key=settings.OPENAI_API_KEY,
 )
 
-# Mapeo de códigos ISO a nombres de idiomas
 LANGUAGE_MAP = {
-    'de': 'German',
-    'es-ct': 'Catalan',
-    'hr': 'Croatian',
-    'dk': 'Danish',
-    'sk': 'Slovak',
-    'si': 'Slovenian',
-    'es': 'Spanish',
-    'fi': 'Finnish',
-    'fr': 'French',
-    'nl': 'Dutch',
-    'hu': 'Hungarian',
-    'gb': 'English',
-    'it': 'Italian',
-    'no': 'Norwegian',
-    'pl': 'Polish',
-    'pt': 'Portuguese',
-    'ro': 'Romanian',
-    'se': 'Swedish',
-    'tr': 'Turkish',
-    'es-ga': 'Galician',
-    'es-pv': 'Basque',
-    'ru': 'Russian',
-    'ua': 'Ukrainian',
-    'bg': 'Bulgarian',
-    'cn': 'Chinese (Mandarin)',
-    'jp': 'Japanese',
-    'kr': 'Korean',
-    'arab': 'Arabic',
-    'il': 'Hebrew',
-    'gr': 'Greek',
-    'in': 'Hindi',
-    'bd': 'Bengali',
-    'lk': 'Tamil',
-    'th': 'Thai',
-    'vn': 'Vietnamese'
+    'de': 'German', 'es-ct': 'Catalan', 'hr': 'Croatian', 'dk': 'Danish',
+    'sk': 'Slovak', 'si': 'Slovenian', 'es': 'Spanish', 'fi': 'Finnish',
+    'fr': 'French', 'nl': 'Dutch', 'hu': 'Hungarian', 'gb': 'English',
+    'it': 'Italian', 'no': 'Norwegian', 'pl': 'Polish', 'pt': 'Portuguese',
+    'ro': 'Romanian', 'se': 'Swedish', 'tr': 'Turkish', 'es-ga': 'Galician',
+    'es-pv': 'Basque', 'ru': 'Russian', 'ua': 'Ukrainian', 'bg': 'Bulgarian',
+    'cn': 'Chinese (Mandarin)', 'jp': 'Japanese', 'kr': 'Korean', 'arab': 'Arabic',
+    'il': 'Hebrew', 'gr': 'Greek', 'in': 'Hindi', 'bd': 'Bengali',
+    'lk': 'Tamil', 'th': 'Thai', 'vn': 'Vietnamese'
 }
 
-# Estructura de respuesta para las traducciones
 class TranslationResponse(BaseModel):
+    """Define la estructura de respuesta esperada de la API de traducción."""
     translations: List[str]
 
 async def translate_text_async(texts: List[str], target_language: str, language_model: str = "openai/gpt-4o-mini") -> List[str]:
-    """
-    Traduce una lista de textos al idioma especificado usando Structured Outputs de OpenAI.
-    Garantiza que el modelo devuelva JSON válido que coincida con el esquema TranslationResponse.
+    """Traduce una lista de textos de forma asíncrona al idioma especificado.
 
-    Args:
-        texts: Lista de textos a traducir
-        target_language: Código ISO del idioma destino (ej. 'es', 'en')
-        language_model: Modelo a usar para la traducción
+    Utiliza la funcionalidad de `parse` (Structured Outputs) del cliente de OpenAI
+    para forzar al modelo a devolver un JSON que se ajuste al esquema `TranslationResponse`.
+    Esto aumenta la robustez y evita errores de formato en la respuesta.
 
-    Returns:
-        Lista de textos traducidos en el mismo orden
+    :param texts: Una lista de cadenas de texto para traducir.
+    :type texts: List[str]
+    :param target_language: El código ISO del idioma de destino (ej. 'es', 'fr').
+    :type target_language: str
+    :param language_model: El identificador del modelo a utilizar (ej. 'openai/gpt-4o-mini').
+    :type language_model: str
+    :return: Una lista de los textos traducidos. En caso de error, devuelve la
+             lista de textos originales como fallback.
+    :rtype: List[str]
+    :raises APIConnectionError, RateLimitError, APIStatusError: Si hay problemas de conexión con la API.
     """
-    # Retornar lista vacía si no hay textos
     if not texts:
         return []
 
-    # Convertir código ISO a nombre de idioma
     language_name = LANGUAGE_MAP.get(target_language.lower(), target_language)
-
-    # Prompt del sistema para el modelo
     system_prompt = (
         f"You are a professional translator. Translate each of the following texts into {language_name}. "
         "Preserve the original formatting and order. Return valid JSON with a 'translations' field, "
         "an array of strings that exactly matches the number of input texts."
     )
-
-    # Prompt del usuario con los textos a traducir
     user_prompt = (
         "Here is the list of texts in JSON. "
         "Return only the 'translations' in the same order:\n\n"
@@ -90,7 +68,6 @@ async def translate_text_async(texts: List[str], target_language: str, language_
     )
 
     try:
-        # Llamada con formato de respuesta estructurado
         response = await client.beta.chat.completions.parse(
             model=language_model,
             messages=[
@@ -101,25 +78,17 @@ async def translate_text_async(texts: List[str], target_language: str, language_
             temperature=0
         )
 
-        # Extraer respuesta parseada
         parsed_response = response.choices[0].message.parsed
         
-        # Validar longitud de traducciones
         if len(parsed_response.translations) != len(texts):
-            raise ValueError(
-                f"Number of translations ({len(parsed_response.translations)}) "
-                f"does not match input texts ({len(texts)})."
-            )
+            raise ValueError(f"La cantidad de traducciones ({len(parsed_response.translations)}) no coincide con los textos de entrada ({len(texts)}).")
 
         return parsed_response.translations
 
-
     except (APIConnectionError, RateLimitError, APIStatusError) as e:
-            logging.error(f"Error de API al traducir: Código={e.status_code}, Respuesta={e.response.text}")
-            raise e  # Relanzar la excepción
-
+        logging.error(f"Error de API al traducir: Código={e.status_code}, Respuesta={e.response.text}")
+        raise e
 
     except Exception as e:
         logging.error(f"Error en traducción: {e}")
-        # Fallback: devolver textos originales
         return texts

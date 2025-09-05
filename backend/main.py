@@ -1,3 +1,11 @@
+"""Módulo principal de la API para la traducción de documentos PDF.
+
+Este archivo define la aplicación FastAPI, sus middlewares, modelos de datos Pydantic,
+y todos los endpoints necesarios para subir, traducir, monitorear y descargar
+documentos PDF. Utiliza Celery para el procesamiento asíncrono y S3/MinIO
+para el almacenamiento de archivos.
+"""
+
 from fastapi import FastAPI, UploadFile, HTTPException, Form, File, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -28,12 +36,14 @@ celery_app = Celery(
 # Modelos de datos
 
 class TaskStatus(str, Enum):
+    """Enumera los posibles estados finales de una tarea de traducción."""
     PENDING = "PENDING"
     PROCESSING = "PROCESSING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 
 class ProcessingStep(str, Enum):
+    """Enumera los pasos intermedios durante el procesamiento de una traducción."""
     QUEUED = "Iniciando traducción"
     UPLOADING_PDF = "Preparando documento"
     CONVERTING_PDF = "Analizando páginas"
@@ -42,10 +52,12 @@ class ProcessingStep(str, Enum):
     UNKNOWN = "Procesando"
 
 class TranslationProgress(BaseModel):
+    """Modela el progreso de una tarea, indicando el paso actual y detalles."""
     step: ProcessingStep = ProcessingStep.QUEUED
     details: Optional[Any] = None
 
 class TranslationTask(BaseModel):
+    """Modelo de respuesta completo para el estado de una tarea."""
     id: str
     status: TaskStatus
     progress: Optional[TranslationProgress] = None
@@ -54,18 +66,22 @@ class TranslationTask(BaseModel):
     translatedFile: Optional[str] = None
 
 class UploadResponse(BaseModel):
+    """Modelo de respuesta tras subir un archivo para traducir."""
     taskId: str
 
 class TranslationText(BaseModel):
+    """Representa un único fragmento de texto original y su traducción."""
     id: int
     original_text: str
     translated_text: str
 
 class PageTranslation(BaseModel):
+    """Contiene todas las traducciones de una única página."""
     page_number: int
     translations: List[TranslationText]
 
 class TranslationData(BaseModel):
+    """Estructura completa de los datos de traducción de un documento."""
     pages: List[PageTranslation]
 
 # Aplicación FastAPI
@@ -81,7 +97,17 @@ app.add_middleware(
 
 # Funciones auxiliares
 def get_final_task_result(task_id: str) -> Optional[AsyncResult]:
-    """Sigue la cadena de tareas hasta la finalizadora"""
+    """Sigue la cadena de tareas de Celery para encontrar el resultado final.
+
+    Algunas tareas (orquestadoras) inician otras. Esta función navega
+    desde la tarea inicial hasta la tarea final que contiene el resultado
+    real.
+
+    :param task_id: El ID de la tarea de Celery inicial (orquestadora).
+    :type task_id: str
+    :return: El objeto AsyncResult de la tarea final, o la tarea orquestadora si aún no ha terminado.
+    :rtype: Optional[AsyncResult]
+    """
     orchestrator_task = AsyncResult(task_id, app=celery_app)
     
     if orchestrator_task.state == 'FAILURE':
@@ -109,21 +135,36 @@ async def translate_pdf_endpoint(
     languageModel: str = Form("openai/gpt-4o-mini"),
     confidence: float = Form(0.45)
 ):
-    """Endpoint para subir PDF e iniciar traducción"""
+    """Recibe un archivo PDF y comienza una tarea de traducción asíncrona.
+
+    Valida que el archivo sea un PDF, lo lee en memoria y lo envía a una
+    tarea de Celery para su procesamiento. Devuelve inmediatamente el ID
+    de la tarea para su posterior consulta.
+
+    :param file: El archivo PDF a traducir.
+    :type file: UploadFile
+    :param srcLang: Idioma de origen (o 'auto' para detección automática).
+    :type srcLang: str
+    :param tgtLang: Idioma de destino.
+    :type tgtLang: str
+    :param languageModel: Modelo de lenguaje a utilizar para la traducción.
+    :type languageModel: str
+    :param confidence: Nivel de confianza para el modelo.
+    :type confidence: float
+    :return: Un objeto JSON con el `taskId` de la tarea iniciada.
+    :rtype: UploadResponse
+    :raises HTTPException: 400 si el archivo no es PDF, 500 para errores internos.
+    """
     try:
         logger.info(f"Iniciando traducción: {file.filename} ({srcLang} -> {tgtLang}) con modelo {languageModel} y confianza {confidence}")
         
-        # Validación de archivo
         if not file.filename.lower().endswith('.pdf'):
             raise HTTPException(status_code=400, detail="Solo se permiten archivos PDF")
         
-        # Leer contenido
         file_content = await file.read()
         
-        # Lanzar tarea de procesamiento
         result = celery_app.send_task('process_pdf_document', args=[file_content, srcLang, tgtLang, languageModel, confidence])
         
-        # Usar ID de Celery como identificador
         task_id = result.id
         
         logger.info(f"Tarea de orquestación iniciada con task_id único: {task_id}")
@@ -136,23 +177,30 @@ async def translate_pdf_endpoint(
 
 @app.get("/pdfs/status/{task_id}")
 async def get_task_status(task_id: str):
-    """Obtiene el estado de una tarea de traducción"""
+    """Consulta el estado y progreso de una tarea de traducción.
+
+    Este endpoint mapea el estado interno de Celery a un formato
+    comprensible para el frontend, incluyendo el paso actual del proceso.
+
+    :param task_id: El ID de la tarea a consultar.
+    :type task_id: str
+    :return: Un objeto `TranslationTask` con el estado detallado de la tarea.
+    :rtype: dict
+    :raises HTTPException: 500 si ocurre un error al consultar el estado.
+    """
     try:
         orchestrator_task = AsyncResult(task_id, app=celery_app)
-        
+        # ... (el resto del código de la función permanece igual)
         state = orchestrator_task.state
         info = orchestrator_task.info or {}
         
-        # Obtener tarea final si la orquestadora tuvo éxito
         if state == 'SUCCESS' and isinstance(info, dict) and 'result_task_id' in info:
             final_task_id = info['result_task_id']
             final_task = AsyncResult(final_task_id, app=celery_app)
             final_state = final_task.state
             final_info = final_task.info or {}
             
-            # Mantener progreso durante transición
             if final_state == 'PENDING':
-                # Estado de procesamiento
                 state = 'PROGRESS'
                 info = {'status': 'Traduciendo contenido'}
             else:
@@ -161,7 +209,6 @@ async def get_task_status(task_id: str):
         
         logger.info(f"Reportando estado para {task_id}: Celery state={state}, info={info}")
 
-        # Mapeo de estados de Celery
         if state == 'PENDING':
             status = TaskStatus.PENDING
             progress = TranslationProgress(step=ProcessingStep.QUEUED)
@@ -169,14 +216,12 @@ async def get_task_status(task_id: str):
             status = TaskStatus.PROCESSING
             step_text = info.get('status', 'Procesando...')
             
-            # Mapear texto de progreso
             step_map = {
                 "Preparando documento": ProcessingStep.UPLOADING_PDF,
                 "Analizando páginas": ProcessingStep.CONVERTING_PDF,
                 "Traduciendo contenido": ProcessingStep.PROCESSING_PAGES,
                 "Finalizando documento": ProcessingStep.COMBINING_PDF,
             }
-            # Buscar coincidencia o usar UNKNOWN
             step = next((s for t, s in step_map.items() if t in step_text), ProcessingStep.UNKNOWN)
             
             progress = TranslationProgress(step=step, details=step_text)
@@ -186,11 +231,10 @@ async def get_task_status(task_id: str):
         elif state == 'FAILURE':
             status = TaskStatus.FAILED
             progress = None
-        else:  # Otros estados como PROCESSING
+        else:
             status = TaskStatus.PROCESSING
             progress = TranslationProgress(step=ProcessingStep.UNKNOWN)
         
-        # Construir respuesta
         error_message = None
         if status == TaskStatus.FAILED:
             error_message = str(orchestrator_task.traceback) if orchestrator_task.traceback else "Error desconocido en la tarea."
@@ -212,30 +256,35 @@ async def get_task_status(task_id: str):
 
 @app.get("/pdfs/download/translated/{task_id}")
 async def get_translated_pdf(task_id: str):
-    """Devuelve URL del PDF traducido"""
+    """Genera y redirige a una URL prefirmada para descargar el PDF traducido.
+
+    Verifica que la tarea se haya completado con éxito y que el archivo exista
+    en S3. Luego, genera una URL de descarga temporal y segura.
+
+    :param task_id: El ID de la tarea completada.
+    :type task_id: str
+    :return: Una redirección HTTP 307 a la URL de descarga del archivo.
+    :rtype: RedirectResponse
+    :raises HTTPException: 404 si la tarea o el archivo no se encuentran, 500 para otros errores.
+    """
     try:
-        # Obtener clave del resultado
         final_task = get_final_task_result(task_id)
         if not final_task or final_task.state != 'SUCCESS':
             raise HTTPException(status_code=404, detail="Tarea no completada o no encontrada")
         
         info = final_task.info or {}
         
-        # Usar clave del resultado si disponible
         if isinstance(info, dict) and 'translated_key' in info:
             translated_key = info['translated_key']
             logger.info(f"Using translated_key from task result: {translated_key}")
         else:
-            # Fallback al patrón estándar
             translated_key = f"{task_id}/translated/translated.pdf"
             logger.warning(f"No translated_key in result, using fallback: {translated_key}")
         
-        # Verificar existencia del PDF
         if not key_exists(translated_key):
             logger.error(f"PDF not found at {translated_key}")
             raise HTTPException(status_code=404, detail="PDF traducido no encontrado")
         
-        # Generar URL temporal
         url = presigned_get_url(
             translated_key,
             expires=3600,
@@ -247,7 +296,6 @@ async def get_translated_pdf(task_id: str):
         
         return RedirectResponse(url=url)
 
-        
     except HTTPException:
         raise
     except Exception as e:
@@ -256,16 +304,21 @@ async def get_translated_pdf(task_id: str):
 
 @app.get("/pdfs/download/original/{task_id}")
 async def get_original_pdf(task_id: str):
-    """Devuelve URL del PDF original"""
+    """Genera y redirige a una URL prefirmada para descargar el PDF original.
+
+    :param task_id: El ID de la tarea asociada al PDF original.
+    :type task_id: str
+    :return: Una redirección HTTP 307 a la URL de descarga del archivo.
+    :rtype: RedirectResponse
+    :raises HTTPException: 404 si el archivo no se encuentra, 500 para otros errores.
+    """
     try:
         original_key = f"{task_id}/original.pdf"
         
-        # Verificar existencia del PDF original
         if not key_exists(original_key):
             logger.error(f"Original PDF not found at {original_key}")
             raise HTTPException(status_code=404, detail="PDF original no encontrado")
         
-        # Generar URL temporal
         url = presigned_get_url(
             original_key,
             expires=3600,
@@ -285,14 +338,23 @@ async def get_original_pdf(task_id: str):
 
 @app.get("/pdfs/translation-data/{task_id}")
 async def get_translation_data(task_id: str):
-    """Devuelve los datos de traducción para edición"""
+    """Obtiene los datos de traducción (texto original y traducido) en formato JSON.
+
+    Este endpoint permite al frontend recuperar los datos de la traducción
+    para mostrarlos en una interfaz de edición.
+
+    :param task_id: El ID de la tarea.
+    :type task_id: str
+    :return: Los datos de traducción en formato JSON.
+    :rtype: dict
+    :raises HTTPException: 404 si los datos no se encuentran.
+    """
     try:
         translation_key = f"{task_id}/translated/translated_translation_data.json"
         
         if not key_exists(translation_key):
             raise HTTPException(status_code=404, detail="Datos de traducción no encontrados")
         
-        # Descargar datos
         data_bytes = download_bytes(translation_key)
         translation_data = json.loads(data_bytes.decode('utf-8'))
         
@@ -306,14 +368,23 @@ async def get_translation_data(task_id: str):
 
 @app.get("/pdfs/translated/{task_id}/position")
 async def get_position_data(task_id: str):
-    """Devuelve los datos de posición para edición"""
+    """Obtiene los datos de posición de los textos en el PDF.
+
+    Devuelve un JSON con las coordenadas y dimensiones de cada fragmento
+    de texto, necesario para la regeneración del PDF.
+
+    :param task_id: El ID de la tarea.
+    :type task_id: str
+    :return: Los datos de posición en formato JSON.
+    :rtype: dict
+    :raises HTTPException: 404 si los datos no se encuentran.
+    """
     try:
         position_key = f"{task_id}/translated/translated_translation_data_position.json"
         
         if not key_exists(position_key):
             raise HTTPException(status_code=404, detail="Datos de posición no encontrados")
         
-        # Descargar datos
         data_bytes = download_bytes(position_key)
         position_data = json.loads(data_bytes.decode('utf-8'))
         
@@ -327,11 +398,22 @@ async def get_position_data(task_id: str):
 
 @app.put("/pdfs/translation-data/{task_id}")
 async def update_translation_data(task_id: str, translation_data: TranslationData = Body(...)):
-    """Actualiza los datos de traducción y regenera el PDF"""
+    """Actualiza los datos de traducción y lanza una tarea para regenerar el PDF.
+
+    Recibe los datos de traducción modificados, los guarda en S3 y luego
+    inicia una tarea de Celery para crear un nuevo PDF con los textos actualizados.
+
+    :param task_id: El ID de la tarea a actualizar.
+    :type task_id: str
+    :param translation_data: El objeto con los datos de traducción actualizados.
+    :type translation_data: TranslationData
+    :return: Un mensaje de confirmación.
+    :rtype: dict
+    :raises HTTPException: 404 si los datos de posición no se encuentran, 500 para otros errores.
+    """
     try:
         logger.info(f"Actualizando datos de traducción para tarea {task_id}")
         
-        # Obtener datos de posición
         position_key = f"{task_id}/translated/translated_translation_data_position.json"
         if not key_exists(position_key):
             raise HTTPException(status_code=404, detail="Datos de posición no encontrados")
@@ -339,12 +421,10 @@ async def update_translation_data(task_id: str, translation_data: TranslationDat
         position_data_bytes = download_bytes(position_key)
         position_data = json.loads(position_data_bytes.decode('utf-8'))
         
-        # Actualizar datos de traducción
         translation_key = f"{task_id}/translated/translated_translation_data.json"
         updated_data = json.dumps(translation_data.dict(), ensure_ascii=False, indent=2).encode()
         upload_bytes(translation_key, updated_data, "application/json")
         
-        # Regenerar PDF
         result = celery_app.send_task('regenerate_pdf_from_storage', args=[task_id, translation_data.dict(), position_data])
         task_result = result.get(timeout=60)
         
@@ -360,11 +440,13 @@ async def update_translation_data(task_id: str, translation_data: TranslationDat
         logger.error(f"Error actualizando traducción para {task_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
-
-
 @app.get("/")
 async def root():
-    """Endpoint raíz con información del sistema"""
+    """Endpoint raíz que proporciona información básica de la API.
+
+    :return: Un JSON con un mensaje de bienvenida y detalles de la configuración.
+    :rtype: dict
+    """
     return {
         "message": "PDF Translator API - S3/MinIO Version",
         "version": "2.0.0",
@@ -375,9 +457,14 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Endpoint de verificación de salud"""
+    """Endpoint de verificación de salud del servicio.
+
+    Comprueba la conectividad con dependencias críticas, como el bucket S3.
+
+    :return: Un JSON indicando el estado de salud del servicio.
+    :rtype: dict
+    """
     try:
-        # Verificar conexión S3
         from src.infrastructure.storage.s3 import _client
         _client.head_bucket(Bucket=settings.AWS_S3_BUCKET)
         

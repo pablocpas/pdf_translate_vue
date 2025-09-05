@@ -1,7 +1,15 @@
+"""Módulo de procesamiento de páginas para extracción de datos.
+
+Este módulo contiene la lógica central para analizar imágenes de páginas de PDF.
+Su función principal, `extract_page_data_in_batch`, está optimizada para
+procesar múltiples páginas de manera eficiente, realizando la detección de
+layout en lote y luego el OCR para cada región de texto identificada.
+"""
+
 import logging
 import os
 import time
-from typing import List, Tuple, Any, Dict
+from typing import List, Any, Dict
 
 from PIL import Image
 from reportlab.lib.pagesizes import A4
@@ -9,48 +17,41 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import Paragraph
 
-from .layout import merge_overlapping_text_regions
+from .layout import merge_overlapping_text_regions, get_layouts_in_batch
 from .ocr import extract_text_from_image
 from .utils import adjust_paragraph_font_size, clean_text, get_font_for_language
-from .pdf_utils import get_page_dimensions_from_image
-from ...infrastructure.config.settings import MARGIN, DEBUG_MODE
-
-from .layout import get_layouts_in_batch, LayoutElement, Rectangle
 
 logger = logging.getLogger(__name__)
 
-# REFACTORIZACIÓN DE ARQUITECTURA:
-# Las funciones process_pdf, process_page, process_text_regions y process_image_regions
-# han sido eliminadas y su lógica redistribuida en:
-# 1. tasks.py: Orquestación del flujo paralelo con Celery
-# 2. extract_and_translate_page_data: Procesamiento de página individual
-# 3. combine_pages_task: Ensamblado del PDF final
-
-# Margen para el recorte de OCR
-OCR_MARGIN_PERCENT = 0.015  # 2% de margen
+OCR_MARGIN_PERCENT = 0.015  # 1.5% de margen
 
 def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float) -> List[Dict[str, Any]]:
-    """
-    Procesa un lote de imágenes para segmentación y OCR eficiente.
-    
-    Proceso:
-    1. Segmentación de layout para todas las páginas en un lote
-    2. Para cada página:
-       a. Extracción de texto (OCR) por regiones
-       b. Ensamblado de estructura de datos (texto, posiciones)
-    
+    """Procesa un lote de imágenes de página para extraer texto y layout.
+
+    Esta es una función clave para el rendimiento del worker. Realiza la
+    detección de layout para todas las imágenes en una sola pasada y luego
+    itera sobre cada página para realizar el OCR en las regiones de texto
+    detectadas.
+
+    :param page_images: Una lista de objetos `Image` de PIL, cada una representando una página.
+    :type page_images: List[Image.Image]
+    :param confidence: El umbral de confianza para el modelo de detección de layout.
+    :type confidence: float
+    :return: Una lista de diccionarios. Cada diccionario contiene los datos
+             extraídos de una página, incluyendo regiones de texto, regiones de
+             imagen y dimensiones de la página.
+    :rtype: List[Dict[str, Any]]
     """
     if not page_images:
         return []
     
     start_total = time.time()
     
-    # 1. Segmentación en lote (optimización principal)
+    # 1. Segmentación en lote
     start_layout = time.time()
     layouts = get_layouts_in_batch(page_images, confidence=confidence, batch_size=len(page_images))
     logger.info(f"Segmentación de layout para {len(page_images)} páginas completada en {time.time() - start_layout:.2f}s")
     
-    # Lista para almacenar los resultados finales de cada página
     final_results = []
 
     # 2. Procesamiento por páginas (OCR y ensamblaje)
@@ -59,20 +60,15 @@ def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float
         logger.info(f"Procesando OCR para página {i+1}/{len(page_images)}")
         
         try:
-
             page_layout = layouts[i]
-
             dpi = 300
             page_width_pts = (page_image.width / dpi) * 72
             page_height_pts = (page_image.height / dpi) * 72
             
             text_layout_regions, image_layout_regions = merge_overlapping_text_regions(page_layout)
 
-        
-            # Regiones de texto para esta página
             final_text_regions = []
             
-            # Extracción de texto por OCR
             for region_idx, (rect, _) in enumerate(text_layout_regions):
                 x1_px, y1_px, x2_px, y2_px = rect
                 box_width, box_height = x2_px - x1_px, y2_px - y1_px
@@ -85,7 +81,6 @@ def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float
                 
                 original_text = clean_text(extract_text_from_image(cropped_image))
                 
-                # Agregar región solo si contiene texto
                 if original_text:
                     frame_x_pts = x1_px * (page_width_pts / page_image.width)
                     frame_y_pts = (page_image.height - y2_px) * (page_height_pts / page_image.height)
@@ -99,7 +94,6 @@ def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float
                         "coordinates": {"x1": x1_px, "y1": y1_px, "x2": x2_px, "y2": y2_px}
                     })
 
-            # Procesa regiones de imagen
             final_image_regions = []
             for img_idx, (element, _) in enumerate(image_layout_regions):
                 x1_px, y1_px, x2_px, y2_px = element.box
@@ -114,7 +108,6 @@ def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float
                     "coordinates": {"x1": x1_px, "y1": y1_px, "x2": x2_px, "y2": y2_px}
                 })
 
-            # Agregar resultado de la página
             final_results.append({
                 "text_regions": final_text_regions,
                 "image_regions": final_image_regions,
@@ -125,9 +118,8 @@ def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float
         except Exception as e:
             logger.error(f"Error procesando OCR en página {i}: {e}", exc_info=True)
             final_results.append({
-                "text_regions": [],
-                "image_regions": [],
-                "page_dimensions": {"width": A4[0], "height": A4[1]},  # Tamaño por defecto
+                "text_regions": [], "image_regions": [],
+                "page_dimensions": {"width": A4[0], "height": A4[1]},
                 "error": str(e)
             })
             
@@ -135,33 +127,24 @@ def extract_page_data_in_batch(page_images: List[Image.Image], confidence: float
     logger.info(f"Extracción total de datos del lote de {len(page_images)} páginas terminada en {time.time() - start_total:.2f}s")
     return final_results
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def regenerate_pdf(output_pdf_path: str, translation_data: dict, position_data: dict, target_language: str) -> dict:
-    """
-    Regenera un PDF usando datos de traducción y posición guardados.
-    Permite editar traducciones y regenerar el documento rápidamente.
+    """Regenera un PDF usando datos de traducción y posición previamente guardados.
 
-    Args:
-        output_pdf_path: Ruta donde guardar el PDF regenerado
-        translation_data: Diccionario con las traducciones por páginas
-        position_data: Dimensiones de página y posiciones de regiones
-        target_language: Idioma de destino para selección de fuentes
+    Esta función es una utilidad que permite reconstruir un documento PDF
+    rápidamente después de que las traducciones hayan sido editadas manualmente,
+    sin necesidad de volver a ejecutar el costoso proceso de OCR y layout.
 
-    Returns:
-        Diccionario con el resultado de la operación
+    :param output_pdf_path: Ruta del archivo donde se guardará el PDF regenerado.
+    :type output_pdf_path: str
+    :param translation_data: Diccionario que contiene los textos traducidos por página y región.
+    :type translation_data: dict
+    :param position_data: Diccionario que contiene las dimensiones de página y las posiciones
+                          de cada región de texto e imagen.
+    :type position_data: dict
+    :param target_language: Código del idioma de destino para la selección de fuentes.
+    :type target_language: str
+    :return: Un diccionario indicando el resultado de la operación.
+    :rtype: dict
     """
     try:
         pdf_canvas = canvas.Canvas(output_pdf_path)
@@ -170,9 +153,7 @@ def regenerate_pdf(output_pdf_path: str, translation_data: dict, position_data: 
         font_name = get_font_for_language(target_language)
         
         translation_lookup = {
-            page["page_number"]: {
-                t["id"]: t for t in page["translations"]
-            }
+            page["page_number"]: {t["id"]: t for t in page["translations"]}
             for page in translation_data.get("pages", [])
         }
         
@@ -203,10 +184,8 @@ def regenerate_pdf(output_pdf_path: str, translation_data: dict, position_data: 
                     initial_font_size = max(min_font_size, pos["height"] * 0.8)
                     p_style = ParagraphStyle(
                         name=f"RegenStyle_p{page_num}_r{region['id']}",
-                        parent=base_style,
-                        fontName=font_name,
-                        fontSize=initial_font_size,
-                        leading=initial_font_size * 1.2
+                        parent=base_style, fontName=font_name,
+                        fontSize=initial_font_size, leading=initial_font_size * 1.2
                     )
                     paragraph = Paragraph(translation["translated_text"], p_style)
                     paragraph = adjust_paragraph_font_size(paragraph, pos["width"], pos["height"], p_style, min_font_size)
