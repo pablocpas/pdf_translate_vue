@@ -41,6 +41,7 @@ from reportlab.lib.utils import ImageReader
 import asyncio
 
 # Imports del proyecto
+from src.domain.translator.translator import translate_text_async
 from src.domain.translator.processor import extract_page_data_in_batch
 from src.domain.translator.utils import get_font_for_language, adjust_paragraph_font_size
 from src.infrastructure.config.settings import MARGIN, settings
